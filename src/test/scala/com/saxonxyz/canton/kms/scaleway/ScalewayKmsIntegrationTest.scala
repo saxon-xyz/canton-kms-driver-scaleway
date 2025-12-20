@@ -10,6 +10,9 @@ import scala.util.Try
 
 class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
 
+  // Minimum expected size for X.509 encoded public keys (typical RSA keys are 200-400 bytes)
+  private val MinX509PublicKeySize = 100
+
   // Check if environment variables are set
   private val secretKey = sys.env.get("SCW_SECRET_KEY")
   private val projectId = sys.env.get("SCW_PROJECT_ID")
@@ -77,7 +80,7 @@ class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAn
       publicKeyResult shouldBe a[Right[_, _]]
       publicKeyResult.foreach { publicKeyBytes =>
         publicKeyBytes should not be empty
-        publicKeyBytes.length should be > 100 // X.509 encoded keys are at least a few hundred bytes
+        publicKeyBytes.length should be > MinX509PublicKeySize
       }
     }
   }

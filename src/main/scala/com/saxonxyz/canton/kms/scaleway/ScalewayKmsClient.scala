@@ -158,12 +158,8 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
     logger.debug(s"Signing data with key: $keyId")
     
     // Hash the data client-side
-    val hashAlgorithm = algorithm match {
-      case KeyAlgorithm.RsaSignPssSha256 | KeyAlgorithm.RsaSignPkcs1Sha256 | KeyAlgorithm.EcdsaSignP256Sha256 => "SHA-256"
-      case KeyAlgorithm.RsaSignPssSha384 | KeyAlgorithm.RsaSignPkcs1Sha384 | KeyAlgorithm.EcdsaSignP384Sha384 => "SHA-384"
-      case KeyAlgorithm.RsaSignPssSha512 | KeyAlgorithm.RsaSignPkcs1Sha512 => "SHA-512"
-      case _ => return Left(s"Algorithm $algorithm is not a signing algorithm")
-    }
+    val hashAlgorithm = ScalewayModels.hashAlgorithmFor(algorithm)
+      .getOrElse(return Left(s"Algorithm $algorithm is not a signing algorithm"))
 
     val hash = Try {
       val md = MessageDigest.getInstance(hashAlgorithm)

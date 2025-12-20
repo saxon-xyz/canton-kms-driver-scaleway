@@ -6,6 +6,20 @@ import io.circe.syntax._
 
 object ScalewayModels {
 
+  /**
+   * Get the hash algorithm name for a signing algorithm
+   */
+  def hashAlgorithmFor(algorithm: KeyAlgorithm): Option[String] = algorithm match {
+    case KeyAlgorithm.RsaSignPssSha256 | KeyAlgorithm.RsaSignPkcs1Sha256 | KeyAlgorithm.EcdsaSignP256Sha256 => 
+      Some("SHA-256")
+    case KeyAlgorithm.RsaSignPssSha384 | KeyAlgorithm.RsaSignPkcs1Sha384 | KeyAlgorithm.EcdsaSignP384Sha384 => 
+      Some("SHA-384")
+    case KeyAlgorithm.RsaSignPssSha512 | KeyAlgorithm.RsaSignPkcs1Sha512 => 
+      Some("SHA-512")
+    case _ => 
+      None
+  }
+
   // Key usages
   sealed trait KeyUsage
   object KeyUsage {
@@ -103,6 +117,7 @@ object ScalewayModels {
     algorithm: KeyAlgorithm,
     description: Option[String] = None,
     tags: Option[List[String]] = None,
+    // Note: protected and unprotected are mutually exclusive per Scaleway's API design
     `protected`: Option[Boolean] = None,
     unprotected: Option[Boolean] = None
   )
