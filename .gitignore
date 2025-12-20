@@ -1,0 +1,22 @@
+# Scala/sbt build artifacts
+target/
+project/target/
+project/project/
+
+# IDE files
+.idea/
+.bsp/
+.metals/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
