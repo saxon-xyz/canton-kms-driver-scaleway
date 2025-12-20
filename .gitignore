@@ -3,6 +3,9 @@ target/
 project/target/
 project/project/
 
+# sbt binary (downloaded)
+sbt/
+
 # IDE files
 .idea/
 .bsp/
