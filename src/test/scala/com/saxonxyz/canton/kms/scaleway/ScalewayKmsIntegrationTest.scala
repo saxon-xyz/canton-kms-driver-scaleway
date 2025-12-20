@@ -36,7 +36,14 @@ class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAn
     if (envVarsPresent) {
       client.foreach { c =>
         createdKeyIds.foreach { keyId =>
-          Try(c.deleteKey(keyId))
+          Try(c.deleteKey(keyId)) match {
+            case scala.util.Success(Right(_)) => 
+              info(s"Successfully cleaned up key $keyId")
+            case scala.util.Success(Left(err)) => 
+              info(s"Failed to delete key $keyId: $err")
+            case scala.util.Failure(ex) => 
+              info(s"Exception while deleting key $keyId: ${ex.getMessage}")
+          }
         }
       }
     }

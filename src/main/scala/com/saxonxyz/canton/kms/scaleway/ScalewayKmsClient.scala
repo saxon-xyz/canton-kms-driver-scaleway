@@ -24,6 +24,8 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
 
   /**
    * Health check endpoint
+   * Note: Scaleway KMS doesn't have a dedicated health endpoint, so we use 
+   * a minimal list operation to verify API connectivity and authentication.
    */
   def healthCheck(): Either[String, Boolean] = {
     logger.debug("Performing health check")
@@ -134,7 +136,8 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
       key.public_key match {
         case Some(pemKey) =>
           Try {
-            // Remove PEM headers and decode from Base64
+            // Simple PEM parsing - removes headers and decodes Base64
+            // Note: Assumes standard PEM format with Unix line endings
             val pemContent = pemKey
               .replace("-----BEGIN PUBLIC KEY-----", "")
               .replace("-----END PUBLIC KEY-----", "")
