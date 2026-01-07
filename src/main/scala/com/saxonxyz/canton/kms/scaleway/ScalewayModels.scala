@@ -155,7 +155,7 @@ object ScalewayModels {
     name: String,
     usage: KeyUsage,
     algorithm: KeyAlgorithm,
-    status: KeyStatus,
+    status: Option[KeyStatus],
     created_at: String,
     updated_at: Option[String] = None,
     description: Option[String] = None,
@@ -207,7 +207,7 @@ object ScalewayModels {
         projectId <- c.get[String]("project_id")
         name <- c.get[String]("name")
         ua <- usageAndAlgorithm
-        status <- c.get[KeyStatus]("status")
+        status <- c.get[Option[KeyStatus]]("status")
         createdAt <- c.get[String]("created_at")
         updatedAt <- c.get[Option[String]]("updated_at")
         description <- c.get[Option[String]]("description")

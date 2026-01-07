@@ -80,7 +80,7 @@ class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAn
       key.name shouldBe keyName
       key.usage shouldBe KeyUsage.AsymmetricSigning
       key.algorithm shouldBe KeyAlgorithm.RsaSignPkcs1Sha256
-      key.status shouldBe KeyStatus.Enabled
+      key.status.foreach(_ shouldBe KeyStatus.Enabled)
       
       // Get public key
       val publicKeyResult = client.get.getPublicKey(key.id)

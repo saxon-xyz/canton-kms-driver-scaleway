@@ -314,7 +314,12 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
    */
   def getKeyStatus(keyId: String): Either[String, KeyStatus] = {
     logger.debug(s"Getting status for key: $keyId")
-    getKey(keyId).map(_.status)
+    getKey(keyId).flatMap { key =>
+      key.status match {
+        case Some(status) => Right(status)
+        case None => Left(s"Key $keyId does not have a status field")
+      }
+    }
   }
 }
 
