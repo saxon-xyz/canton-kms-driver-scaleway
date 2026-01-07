@@ -61,4 +61,36 @@ class ScalewayModelsSpec extends AnyFlatSpec with Matchers {
       )
     )
   }
+
+  it should "decode usage map responses with missing status field (defaulting to Enabled)" in {
+    val json =
+      """
+        |{
+        |  "id": "key-2",
+        |  "project_id": "project",
+        |  "name": "key-name-2",
+        |  "usage": { "symmetric_encryption": "aes_256_gcm" },
+        |  "created_at": "2024-01-02T00:00:00Z",
+        |  "region": "nl-ams"
+        |}
+        |""".stripMargin
+
+    decode[Key](json) shouldBe Right(
+      Key(
+        id = "key-2",
+        project_id = "project",
+        name = "key-name-2",
+        usage = KeyUsage.SymmetricEncryption,
+        algorithm = KeyAlgorithm.Aes256Gcm,
+        status = KeyStatus.Enabled,
+        created_at = "2024-01-02T00:00:00Z",
+        updated_at = None,
+        description = None,
+        tags = None,
+        `protected` = None,
+        public_key = None,
+        region = "nl-ams"
+      )
+    )
+  }
 }

@@ -207,7 +207,7 @@ object ScalewayModels {
         projectId <- c.get[String]("project_id")
         name <- c.get[String]("name")
         ua <- usageAndAlgorithm
-        status <- c.get[KeyStatus]("status")
+        status <- c.get[Option[KeyStatus]]("status").map(_.getOrElse(KeyStatus.Enabled))
         createdAt <- c.get[String]("created_at")
         updatedAt <- c.get[Option[String]]("updated_at")
         description <- c.get[Option[String]]("description")
