@@ -126,30 +126,48 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
   }
 
   /**
-   * Get public key in X.509 format
+   * Get public key in X.509 format using dedicated endpoint
    */
   def getPublicKey(keyId: String): Either[String, Array[Byte]] = {
     logger.debug(s"Getting public key for: $keyId")
     
-    getKey(keyId).flatMap { key =>
-      key.public_key match {
-        case Some(pemKey) =>
-          Try {
-            // Simple PEM parsing - removes headers and decodes Base64
-            // Note: Assumes standard PEM format with Unix line endings
-            val pemContent = pemKey
-              .replace("-----BEGIN PUBLIC KEY-----", "")
-              .replace("-----END PUBLIC KEY-----", "")
-              .replaceAll("\\s", "")
-            
-            Base64.getDecoder.decode(pemContent)
-          } match {
-            case Success(bytes) => Right(bytes)
-            case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")
-          }
-        case None =>
-          Left(s"Key $keyId does not have a public key")
+    val request = basicRequest
+      .get(uri"$baseUri/keys/$keyId/public-key")
+      .headers(authHeader)
+      .readTimeout(config.requestTimeout)
+      .response(asStringAlways)
+
+    try {
+      val response = request.send(backend)
+      if (response.code.isSuccess) {
+        // Parse the response to get the public_key field
+        parse(response.body).flatMap { json =>
+          json.hcursor.get[String]("public_key")
+        } match {
+          case Right(pemKey) =>
+            Try {
+              // Simple PEM parsing - removes headers and decodes Base64
+              // Note: Assumes standard PEM format with Unix line endings
+              val pemContent = pemKey
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s", "")
+              
+              Base64.getDecoder.decode(pemContent)
+            } match {
+              case Success(bytes) => Right(bytes)
+              case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")
+            }
+          case Left(err) =>
+            Left(s"Failed to parse public key response: ${err.getMessage}")
+        }
+      } else {
+        Left(s"Failed to get public key: ${response.code} - ${response.body}")
       }
+    } catch {
+      case e: Exception =>
+        logger.error(s"Failed to get public key for $keyId", e)
+        Left(s"Failed to get public key: ${e.getMessage}")
     }
   }
 
@@ -311,14 +329,15 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
 
   /**
    * Get key status
+   * Note: Defaults to Enabled if status field is not present in the API response,
+   * as newly created keys are enabled by default in Scaleway KMS.
    */
   def getKeyStatus(keyId: String): Either[String, KeyStatus] = {
     logger.debug(s"Getting status for key: $keyId")
-    getKey(keyId).flatMap { key =>
-      key.status match {
-        case Some(status) => Right(status)
-        case None => Left(s"Key $keyId does not have a status field")
-      }
+    getKey(keyId).map { key =>
+      // Default to Enabled if status field is not present
+      // This is the default state for newly created keys in Scaleway KMS
+      key.status.getOrElse(KeyStatus.Enabled)
     }
   }
 }
