@@ -140,20 +140,25 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
     try {
       val response = request.send(backend)
       if (response.code.isSuccess) {
-        decode[PublicKeyResponse](response.body) match {
-          case Right(pkResp) =>
-            Try {
-              // Simple PEM parsing - removes headers and decodes Base64
-              // Note: Assumes standard PEM format with Unix line endings
-              val pemContent = pkResp.public_key
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
-                .replaceAll("\\s", "")
-              
-              Base64.getDecoder.decode(pemContent)
-            } match {
-              case Success(bytes) => Right(bytes)
-              case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")
+        decode[Key](response.body) match {
+          case Right(key) =>
+            key.public_key match {
+              case Some(pemKey) =>
+                Try {
+                  // Simple PEM parsing - removes headers and decodes Base64
+                  // Note: Assumes standard PEM format with Unix line endings
+                  val pemContent = pemKey
+                    .replace("-----BEGIN PUBLIC KEY-----", "")
+                    .replace("-----END PUBLIC KEY-----", "")
+                    .replaceAll("\\s", "")
+                  
+                  Base64.getDecoder.decode(pemContent)
+                } match {
+                  case Success(bytes) => Right(bytes)
+                  case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")
+                }
+              case None =>
+                Left(s"Public key not present in response for key $keyId")
             }
           case Left(err) =>
             Left(s"Failed to parse public key response: ${err.getMessage}")
