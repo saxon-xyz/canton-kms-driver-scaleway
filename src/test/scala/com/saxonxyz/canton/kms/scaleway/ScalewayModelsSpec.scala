@@ -93,4 +93,38 @@ class ScalewayModelsSpec extends AnyFlatSpec with Matchers {
       )
     )
   }
+
+  it should "decode responses with public_key field" in {
+    val json =
+      """
+        |{
+        |  "id": "key-3",
+        |  "project_id": "project",
+        |  "name": "key-name-3",
+        |  "usage": { "asymmetric_signing": "ec_p256_sha256" },
+        |  "status": "enabled",
+        |  "created_at": "2024-01-01T00:00:00Z",
+        |  "region": "fr-par",
+        |  "public_key": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"
+        |}
+        |""".stripMargin
+
+    decode[Key](json) shouldBe Right(
+      Key(
+        id = "key-3",
+        project_id = "project",
+        name = "key-name-3",
+        usage = KeyUsage.AsymmetricSigning,
+        algorithm = KeyAlgorithm.EcdsaSignP256Sha256,
+        status = Some(KeyStatus.Enabled),
+        created_at = "2024-01-01T00:00:00Z",
+        updated_at = None,
+        description = None,
+        tags = None,
+        `protected` = None,
+        public_key = Some("-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...\n-----END PUBLIC KEY-----"),
+        region = "fr-par"
+      )
+    )
+  }
 }
