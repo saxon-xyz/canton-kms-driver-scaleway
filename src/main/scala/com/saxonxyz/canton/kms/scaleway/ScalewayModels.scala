@@ -87,15 +87,15 @@ object ScalewayModels {
     }
 
     implicit val decoder: Decoder[KeyAlgorithm] = Decoder.decodeString.emap {
-      case "rsa_pss_2048_sha256" | "rsa_pss_3072_sha256" | "rsa_pss_4096_sha256" | "rsa_sign_pss_sha_256" =>
+      case "rsa_pss_2048_sha256" | "rsa_sign_pss_sha_256" =>
         Right(RsaSignPssSha256)
-      case "rsa_pss_3072_sha384" | "rsa_pss_4096_sha384" | "rsa_sign_pss_sha_384" =>
+      case "rsa_pss_3072_sha384" | "rsa_sign_pss_sha_384" =>
         Right(RsaSignPssSha384)
       case "rsa_pss_4096_sha512" | "rsa_sign_pss_sha_512" =>
         Right(RsaSignPssSha512)
-      case "rsa_pkcs1_2048_sha256" | "rsa_pkcs1_3072_sha256" | "rsa_pkcs1_4096_sha256" | "rsa_sign_pkcs1_sha_256" =>
+      case "rsa_pkcs1_2048_sha256" | "rsa_sign_pkcs1_sha_256" =>
         Right(RsaSignPkcs1Sha256)
-      case "rsa_pkcs1_3072_sha384" | "rsa_pkcs1_4096_sha384" | "rsa_sign_pkcs1_sha_384" =>
+      case "rsa_pkcs1_3072_sha384" | "rsa_sign_pkcs1_sha_384" =>
         Right(RsaSignPkcs1Sha384)
       case "rsa_pkcs1_4096_sha512" | "rsa_sign_pkcs1_sha_512" =>
         Right(RsaSignPkcs1Sha512)
@@ -103,8 +103,8 @@ object ScalewayModels {
         Right(EcdsaSignP256Sha256)
       case "ec_p384_sha384" | "ecdsa_sign_p384_sha_384" =>
         Right(EcdsaSignP384Sha384)
-      case "rsa_oaep_2048_sha256" | "rsa_oaep_3072_sha256" | "rsa_oaep_4096_sha256" | "rsa_oaep_sha_256" =>
-        Right(RsaOaepSha256)
+      case "rsa_oaep_2048_sha256" | "rsa_oaep_sha_256" =>
+        Right(RsaOaepSha256) // accepts legacy alias for backwards compatibility
       case "aes_256_gcm" => Right(Aes256Gcm)
       case other => Left(s"Unknown algorithm: $other")
     }
@@ -166,13 +166,28 @@ object ScalewayModels {
   )
 
   object Key {
+    private def decodeUsageAndAlgorithm(c: HCursor): Decoder.Result[(KeyUsage, KeyAlgorithm)] = {
+      c.get[Option[KeyAlgorithm]]("algorithm").flatMap {
+        case Some(algorithm) =>
+          c.downField("usage").as[KeyUsage].map(usage => usage -> algorithm)
+        case None =>
+          c.downField("usage").as[Map[KeyUsage, KeyAlgorithm]].flatMap {
+            case usageMap if usageMap.size == 1 =>
+              Right(usageMap.head)
+            case usageMap if usageMap.isEmpty =>
+              Left(DecodingFailure("usage map cannot be empty", c.history))
+            case _ =>
+              Left(DecodingFailure("usage map must contain a single entry", c.history))
+          }
+      }
+    }
+
     implicit val encoder: Encoder[Key] = Encoder.instance { key =>
       Json.obj(
         "id" -> Json.fromString(key.id),
         "project_id" -> Json.fromString(key.project_id),
         "name" -> Json.fromString(key.name),
         "usage" -> Map(key.usage -> key.algorithm).asJson,
-        "algorithm" -> key.algorithm.asJson,
         "status" -> key.status.asJson,
         "created_at" -> Json.fromString(key.created_at),
         "updated_at" -> key.updated_at.asJson,
@@ -185,14 +200,7 @@ object ScalewayModels {
     }
 
     implicit val decoder: Decoder[Key] = (c: HCursor) => {
-      val usageAndAlgorithm = c.downField("usage").as[Map[KeyUsage, KeyAlgorithm]].flatMap { usageMap =>
-        usageMap.headOption.toRight(DecodingFailure("usage map cannot be empty", c.history))
-      }.orElse {
-        for {
-          usage <- c.downField("usage").as[KeyUsage]
-          algorithm <- c.downField("algorithm").as[KeyAlgorithm]
-        } yield (usage, algorithm)
-      }
+      val usageAndAlgorithm = decodeUsageAndAlgorithm(c)
 
       for {
         id <- c.get[String]("id")
