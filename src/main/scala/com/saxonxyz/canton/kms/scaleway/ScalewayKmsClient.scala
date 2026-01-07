@@ -140,15 +140,12 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
     try {
       val response = request.send(backend)
       if (response.code.isSuccess) {
-        // Parse the response to get the public_key field
-        parse(response.body).flatMap { json =>
-          json.hcursor.get[String]("public_key")
-        } match {
-          case Right(pemKey) =>
+        decode[PublicKeyResponse](response.body) match {
+          case Right(pkResp) =>
             Try {
               // Simple PEM parsing - removes headers and decodes Base64
               // Note: Assumes standard PEM format with Unix line endings
-              val pemContent = pemKey
+              val pemContent = pkResp.public_key
                 .replace("-----BEGIN PUBLIC KEY-----", "")
                 .replace("-----END PUBLIC KEY-----", "")
                 .replaceAll("\\s", "")

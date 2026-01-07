@@ -254,6 +254,16 @@ object ScalewayModels {
     implicit val decoder: Decoder[SignResponse] = deriveDecoder[SignResponse]
   }
 
+  // Public key response
+  case class PublicKeyResponse(
+    public_key: String  // PEM encoded
+  )
+
+  object PublicKeyResponse {
+    implicit val encoder: Encoder[PublicKeyResponse] = deriveEncoder[PublicKeyResponse]
+    implicit val decoder: Decoder[PublicKeyResponse] = deriveDecoder[PublicKeyResponse]
+  }
+
   // Decrypt request
   case class DecryptRequest(
     key_id: String,
