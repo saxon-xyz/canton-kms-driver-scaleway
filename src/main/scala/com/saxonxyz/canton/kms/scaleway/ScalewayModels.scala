@@ -39,6 +39,19 @@ object ScalewayModels {
       case "symmetric_encryption" => Right(SymmetricEncryption)
       case other => Left(s"Unknown key usage: $other")
     }
+
+    implicit val keyEncoder: KeyEncoder[KeyUsage] = {
+      case AsymmetricSigning => "asymmetric_signing"
+      case AsymmetricEncryption => "asymmetric_encryption"
+      case SymmetricEncryption => "symmetric_encryption"
+    }
+
+    implicit val keyDecoder: KeyDecoder[KeyUsage] = {
+      case "asymmetric_signing" => Some(AsymmetricSigning)
+      case "asymmetric_encryption" => Some(AsymmetricEncryption)
+      case "symmetric_encryption" => Some(SymmetricEncryption)
+      case _ => None
+    }
   }
 
   // Key algorithms
@@ -113,8 +126,7 @@ object ScalewayModels {
   case class CreateKeyRequest(
     project_id: String,
     name: String,
-    usage: KeyUsage,
-    algorithm: KeyAlgorithm,
+    usage: Map[KeyUsage, KeyAlgorithm],
     description: Option[String] = None,
     tags: Option[List[String]] = None,
     // Note: protected and unprotected are mutually exclusive per Scaleway's API design

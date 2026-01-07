@@ -64,8 +64,7 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
     val createRequest = CreateKeyRequest(
       project_id = config.projectId,
       name = name,
-      usage = usage,
-      algorithm = algorithm,
+      usage = Map(usage -> algorithm),
       description = description,
       tags = tags
     )
