@@ -74,28 +74,37 @@ object ScalewayModels {
     case object Aes256Gcm extends KeyAlgorithm
 
     implicit val encoder: Encoder[KeyAlgorithm] = Encoder.instance {
-      case RsaSignPssSha256 => Json.fromString("rsa_sign_pss_sha_256")
-      case RsaSignPssSha384 => Json.fromString("rsa_sign_pss_sha_384")
-      case RsaSignPssSha512 => Json.fromString("rsa_sign_pss_sha_512")
-      case RsaSignPkcs1Sha256 => Json.fromString("rsa_sign_pkcs1_sha_256")
-      case RsaSignPkcs1Sha384 => Json.fromString("rsa_sign_pkcs1_sha_384")
-      case RsaSignPkcs1Sha512 => Json.fromString("rsa_sign_pkcs1_sha_512")
-      case EcdsaSignP256Sha256 => Json.fromString("ecdsa_sign_p256_sha_256")
-      case EcdsaSignP384Sha384 => Json.fromString("ecdsa_sign_p384_sha_384")
-      case RsaOaepSha256 => Json.fromString("rsa_oaep_sha_256")
+      case RsaSignPssSha256 => Json.fromString("rsa_pss_2048_sha256")
+      case RsaSignPssSha384 => Json.fromString("rsa_pss_3072_sha384")
+      case RsaSignPssSha512 => Json.fromString("rsa_pss_4096_sha512")
+      case RsaSignPkcs1Sha256 => Json.fromString("rsa_pkcs1_2048_sha256")
+      case RsaSignPkcs1Sha384 => Json.fromString("rsa_pkcs1_3072_sha384")
+      case RsaSignPkcs1Sha512 => Json.fromString("rsa_pkcs1_4096_sha512")
+      case EcdsaSignP256Sha256 => Json.fromString("ec_p256_sha256")
+      case EcdsaSignP384Sha384 => Json.fromString("ec_p384_sha384")
+      case RsaOaepSha256 => Json.fromString("rsa_oaep_2048_sha256")
       case Aes256Gcm => Json.fromString("aes_256_gcm")
     }
 
     implicit val decoder: Decoder[KeyAlgorithm] = Decoder.decodeString.emap {
-      case "rsa_sign_pss_sha_256" => Right(RsaSignPssSha256)
-      case "rsa_sign_pss_sha_384" => Right(RsaSignPssSha384)
-      case "rsa_sign_pss_sha_512" => Right(RsaSignPssSha512)
-      case "rsa_sign_pkcs1_sha_256" => Right(RsaSignPkcs1Sha256)
-      case "rsa_sign_pkcs1_sha_384" => Right(RsaSignPkcs1Sha384)
-      case "rsa_sign_pkcs1_sha_512" => Right(RsaSignPkcs1Sha512)
-      case "ecdsa_sign_p256_sha_256" => Right(EcdsaSignP256Sha256)
-      case "ecdsa_sign_p384_sha_384" => Right(EcdsaSignP384Sha384)
-      case "rsa_oaep_sha_256" => Right(RsaOaepSha256)
+      case "rsa_pss_2048_sha256" | "rsa_pss_3072_sha256" | "rsa_pss_4096_sha256" | "rsa_sign_pss_sha_256" =>
+        Right(RsaSignPssSha256)
+      case "rsa_pss_3072_sha384" | "rsa_pss_4096_sha384" | "rsa_sign_pss_sha_384" =>
+        Right(RsaSignPssSha384)
+      case "rsa_pss_4096_sha512" | "rsa_sign_pss_sha_512" =>
+        Right(RsaSignPssSha512)
+      case "rsa_pkcs1_2048_sha256" | "rsa_pkcs1_3072_sha256" | "rsa_pkcs1_4096_sha256" | "rsa_sign_pkcs1_sha_256" =>
+        Right(RsaSignPkcs1Sha256)
+      case "rsa_pkcs1_3072_sha384" | "rsa_pkcs1_4096_sha384" | "rsa_sign_pkcs1_sha_384" =>
+        Right(RsaSignPkcs1Sha384)
+      case "rsa_pkcs1_4096_sha512" | "rsa_sign_pkcs1_sha_512" =>
+        Right(RsaSignPkcs1Sha512)
+      case "ec_p256_sha256" | "ecdsa_sign_p256_sha_256" =>
+        Right(EcdsaSignP256Sha256)
+      case "ec_p384_sha384" | "ecdsa_sign_p384_sha_384" =>
+        Right(EcdsaSignP384Sha384)
+      case "rsa_oaep_2048_sha256" | "rsa_oaep_3072_sha256" | "rsa_oaep_4096_sha256" | "rsa_oaep_sha_256" =>
+        Right(RsaOaepSha256)
       case "aes_256_gcm" => Right(Aes256Gcm)
       case other => Left(s"Unknown algorithm: $other")
     }
@@ -157,8 +166,63 @@ object ScalewayModels {
   )
 
   object Key {
-    implicit val encoder: Encoder[Key] = deriveEncoder[Key]
-    implicit val decoder: Decoder[Key] = deriveDecoder[Key]
+    implicit val encoder: Encoder[Key] = Encoder.instance { key =>
+      Json.obj(
+        "id" -> Json.fromString(key.id),
+        "project_id" -> Json.fromString(key.project_id),
+        "name" -> Json.fromString(key.name),
+        "usage" -> Map(key.usage -> key.algorithm).asJson,
+        "algorithm" -> key.algorithm.asJson,
+        "status" -> key.status.asJson,
+        "created_at" -> Json.fromString(key.created_at),
+        "updated_at" -> key.updated_at.asJson,
+        "description" -> key.description.asJson,
+        "tags" -> key.tags.asJson,
+        "protected" -> key.`protected`.asJson,
+        "public_key" -> key.public_key.asJson,
+        "region" -> Json.fromString(key.region)
+      )
+    }
+
+    implicit val decoder: Decoder[Key] = (c: HCursor) => {
+      val usageAndAlgorithm = c.downField("usage").as[Map[KeyUsage, KeyAlgorithm]].flatMap { usageMap =>
+        usageMap.headOption.toRight(DecodingFailure("usage map cannot be empty", c.history))
+      }.orElse {
+        for {
+          usage <- c.downField("usage").as[KeyUsage]
+          algorithm <- c.downField("algorithm").as[KeyAlgorithm]
+        } yield (usage, algorithm)
+      }
+
+      for {
+        id <- c.get[String]("id")
+        projectId <- c.get[String]("project_id")
+        name <- c.get[String]("name")
+        ua <- usageAndAlgorithm
+        status <- c.get[KeyStatus]("status")
+        createdAt <- c.get[String]("created_at")
+        updatedAt <- c.get[Option[String]]("updated_at")
+        description <- c.get[Option[String]]("description")
+        tags <- c.get[Option[List[String]]]("tags")
+        prot <- c.get[Option[Boolean]]("protected")
+        publicKey <- c.get[Option[String]]("public_key")
+        region <- c.get[String]("region")
+      } yield Key(
+        id = id,
+        project_id = projectId,
+        name = name,
+        usage = ua._1,
+        algorithm = ua._2,
+        status = status,
+        created_at = createdAt,
+        updated_at = updatedAt,
+        description = description,
+        tags = tags,
+        `protected` = prot,
+        public_key = publicKey,
+        region = region
+      )
+    }
   }
 
   // Sign request
