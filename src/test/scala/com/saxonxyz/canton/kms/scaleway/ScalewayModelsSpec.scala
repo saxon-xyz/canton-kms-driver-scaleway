@@ -50,7 +50,39 @@ class ScalewayModelsSpec extends AnyFlatSpec with Matchers {
         name = "key-name",
         usage = KeyUsage.AsymmetricSigning,
         algorithm = KeyAlgorithm.RsaSignPkcs1Sha256,
-        status = KeyStatus.Enabled,
+        status = Some(KeyStatus.Enabled),
+        created_at = "2024-01-01T00:00:00Z",
+        updated_at = None,
+        description = None,
+        tags = None,
+        `protected` = None,
+        public_key = None,
+        region = "fr-par"
+      )
+    )
+  }
+
+  it should "decode responses without status field" in {
+    val json =
+      """
+        |{
+        |  "id": "key-2",
+        |  "project_id": "project",
+        |  "name": "key-name-2",
+        |  "usage": { "symmetric_encryption": "aes_256_gcm" },
+        |  "created_at": "2024-01-01T00:00:00Z",
+        |  "region": "fr-par"
+        |}
+        |""".stripMargin
+
+    decode[Key](json) shouldBe Right(
+      Key(
+        id = "key-2",
+        project_id = "project",
+        name = "key-name-2",
+        usage = KeyUsage.SymmetricEncryption,
+        algorithm = KeyAlgorithm.Aes256Gcm,
+        status = None,
         created_at = "2024-01-01T00:00:00Z",
         updated_at = None,
         description = None,
