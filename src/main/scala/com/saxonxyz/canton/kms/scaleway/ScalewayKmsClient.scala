@@ -61,12 +61,17 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
   ): Either[String, Key] = {
     logger.info(s"Creating key: $name with usage $usage and algorithm $algorithm")
     
+    val (isProtected, isUnprotected) =
+      if (config.defaultProtected) (Some(true), None) else (None, Some(true))
+
     val createRequest = CreateKeyRequest(
       project_id = config.projectId,
       name = name,
       usage = Map(usage -> algorithm),
       description = description,
-      tags = tags
+      tags = tags,
+      `protected` = isProtected,
+      unprotected = isUnprotected
     )
 
     val request = basicRequest
@@ -143,14 +148,15 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
         decode[PublicKeyResponse](response.body) match {
           case Right(pkResp) =>
             Try {
-              // Simple PEM parsing - removes headers and decodes Base64
-              // Note: Assumes standard PEM format with Unix line endings
-              val pemContent = pkResp.public_key
-                .replace("-----BEGIN PUBLIC KEY-----", "")
-                .replace("-----END PUBLIC KEY-----", "")
+              // Robust PEM parsing: drop any BEGIN/END lines then Base64-decode body
+              val pemBody = pkResp.pem
+                .linesIterator
+                .filterNot(_.startsWith("-----BEGIN"))
+                .filterNot(_.startsWith("-----END"))
+                .mkString
                 .replaceAll("\\s", "")
-              
-              Base64.getDecoder.decode(pemContent)
+
+              Base64.getDecoder.decode(pemBody)
             } match {
               case Success(bytes) => Right(bytes)
               case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")

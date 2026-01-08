@@ -256,12 +256,15 @@ object ScalewayModels {
 
   // Public key response
   case class PublicKeyResponse(
-    public_key: String  // PEM encoded
+    pem: String  // PEM encoded
   )
 
   object PublicKeyResponse {
     implicit val encoder: Encoder[PublicKeyResponse] = deriveEncoder[PublicKeyResponse]
-    implicit val decoder: Decoder[PublicKeyResponse] = deriveDecoder[PublicKeyResponse]
+    implicit val decoder: Decoder[PublicKeyResponse] = (c: HCursor) => {
+      // Prefer the documented "pem" field, but fall back to legacy "public_key" for compatibility
+      c.get[String]("pem").orElse(c.get[String]("public_key")).map(PublicKeyResponse(_))
+    }
   }
 
   // Decrypt request

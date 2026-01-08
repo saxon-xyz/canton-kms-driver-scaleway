@@ -38,7 +38,8 @@ class ScalewayKmsDriverFactory extends KmsDriverFactory with LazyLogging {
         region = configMap.getOrElse("region",
           return Left("Missing required config: region")),
         baseUrl = configMap.getOrElse("baseUrl", "https://api.scaleway.com"),
-        apiVersion = configMap.getOrElse("apiVersion", "v1alpha1")
+        apiVersion = configMap.getOrElse("apiVersion", "v1alpha1"),
+        defaultProtected = configMap.get("defaultProtected").flatMap(v => scala.util.Try(v.toBoolean).toOption).getOrElse(true)
       )
       
       logger.info(s"Successfully created Scaleway KMS config for region ${config.region}")

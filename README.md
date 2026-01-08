@@ -54,6 +54,7 @@ scaleway {
     apiVersion = "v1alpha1"  # optional
     requestTimeout = 30s  # optional
     connectionTimeout = 10s  # optional
+    defaultProtected = true  # optional, set false in tests to create unprotected keys
   }
 }
 ```

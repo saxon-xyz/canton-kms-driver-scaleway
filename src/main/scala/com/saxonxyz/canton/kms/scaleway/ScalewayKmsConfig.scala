@@ -13,7 +13,10 @@ case class ScalewayKmsConfig(
   baseUrl: String = "https://api.scaleway.com",
   apiVersion: String = "v1alpha1",
   requestTimeout: FiniteDuration = 30.seconds,
-  connectionTimeout: FiniteDuration = 10.seconds
+  connectionTimeout: FiniteDuration = 10.seconds,
+  // When true, keys created via this driver are protected against deletion by default.
+  // When false (e.g., in tests), keys are created as unprotected so they can be deleted.
+  defaultProtected: Boolean = true
 ) {
   def apiBaseUrl: String = s"$baseUrl/key-manager/$apiVersion/regions/$region"
 }
@@ -30,11 +33,17 @@ object ScalewayKmsConfig {
       throw new IllegalArgumentException("SCW_PROJECT_ID environment variable is required"))
     val region = sys.env.getOrElse("SCW_REGION",
       throw new IllegalArgumentException("SCW_REGION environment variable is required"))
+
+    val defaultProtected = sys.env
+      .get("SCW_KMS_DEFAULT_PROTECTED")
+      .flatMap(v => scala.util.Try(v.toBoolean).toOption)
+      .getOrElse(true)
     
     ScalewayKmsConfig(
       secretKey = secretKey,
       projectId = projectId,
-      region = region
+      region = region,
+      defaultProtected = defaultProtected
     )
   }
 }
