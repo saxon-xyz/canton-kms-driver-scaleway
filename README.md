@@ -4,24 +4,26 @@ Scaleway Key Management Service (KMS) driver for Canton, implementing the Canton
 
 ## Features
 
-- Full implementation of Canton KMS Driver API
-- Support for Scaleway Key Manager v1alpha1 API
-- Asymmetric signing keys (RSA, ECDSA)
-- Asymmetric encryption keys (RSA-OAEP)
-- Symmetric encryption keys (AES-256-GCM)
-- Client-side hashing for signing operations
-- Automatic IV/tag handling for AES-GCM operations
-- Configurable timeouts and endpoints
-- Integration tests with environment-based configuration
+-  Full implementation of Canton KMS Driver API
+-  Support for Scaleway Key Manager v1alpha1 API
+-  Asymmetric signing keys (RSA, ECDSA)
+-  Asymmetric encryption keys (RSA-OAEP)
+-  Symmetric encryption keys (AES-256-GCM)
+-  Client-side hashing for signing operations
+-  Automatic IV/tag handling for AES-GCM operations
+-  Configurable timeouts and endpoints
+-  Integration tests with environment-based configuration
 
 ## Building
 
 Build the project:
+
 ```bash
 sbt compile
 ```
 
 Run tests (requires Scaleway credentials):
+
 ```bash
 export SCW_SECRET_KEY="your-secret-key"
 export SCW_PROJECT_ID="your-project-id"
@@ -30,6 +32,7 @@ sbt test
 ```
 
 Build fat JAR:
+
 ```bash
 sbt assembly
 ```
@@ -38,9 +41,9 @@ sbt assembly
 
 ### Environment Variables
 
-- `SCW_SECRET_KEY` - Scaleway secret key (required)
-- `SCW_PROJECT_ID` - Scaleway project ID (required)
-- `SCW_REGION` - Scaleway region (required)
+-  `SCW_SECRET_KEY` - Scaleway secret key (required)
+-  `SCW_PROJECT_ID` - Scaleway project ID (required)
+-  `SCW_REGION` - Scaleway region (required)
 
 ### Configuration File
 
@@ -142,19 +145,19 @@ driver.close()
 
 ### Signing
 
-- `rsa_sign_pss_sha_256` - RSA PSS with SHA-256
-- `rsa_sign_pss_sha_384` - RSA PSS with SHA-384
-- `rsa_sign_pss_sha_512` - RSA PSS with SHA-512
-- `rsa_sign_pkcs1_sha_256` - RSA PKCS#1 with SHA-256
-- `rsa_sign_pkcs1_sha_384` - RSA PKCS#1 with SHA-384
-- `rsa_sign_pkcs1_sha_512` - RSA PKCS#1 with SHA-512
-- `ecdsa_sign_p256_sha_256` - ECDSA P-256 with SHA-256
-- `ecdsa_sign_p384_sha_384` - ECDSA P-384 with SHA-384
+-  `rsa_sign_pss_sha_256` - RSA PSS with SHA-256
+-  `rsa_sign_pss_sha_384` - RSA PSS with SHA-384
+-  `rsa_sign_pss_sha_512` - RSA PSS with SHA-512
+-  `rsa_sign_pkcs1_sha_256` - RSA PKCS#1 with SHA-256
+-  `rsa_sign_pkcs1_sha_384` - RSA PKCS#1 with SHA-384
+-  `rsa_sign_pkcs1_sha_512` - RSA PKCS#1 with SHA-512
+-  `ecdsa_sign_p256_sha_256` - ECDSA P-256 with SHA-256
+-  `ecdsa_sign_p384_sha_384` - ECDSA P-384 with SHA-384
 
 ### Encryption
 
-- `rsa_oaep_sha_256` - RSA-OAEP with SHA-256
-- `aes_256_gcm` - AES-256-GCM
+-  `rsa_oaep_sha_256` - RSA-OAEP with SHA-256
+-  `aes_256_gcm` - AES-256-GCM
 
 ## Integration Tests
 
