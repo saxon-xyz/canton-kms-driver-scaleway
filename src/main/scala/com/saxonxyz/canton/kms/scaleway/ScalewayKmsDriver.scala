@@ -179,7 +179,9 @@ class ScalewayKmsDriver(
   )(traceContext: Context): Future[Array[Byte]] = Future {
     logger.debug(s"Encrypting symmetrically with key: $keyId")
 
-    client.encrypt(keyId, data) match {
+    // Canton v1 KMS Driver API does not expose associated/“additional” data for symmetric encryption,
+    // so we always call the client with additionalData = None here.
+    client.encrypt(keyId, data, additionalData = None) match {
       case Right(ciphertext) => ciphertext
       case Left(err) =>
         throw KmsDriverException(
