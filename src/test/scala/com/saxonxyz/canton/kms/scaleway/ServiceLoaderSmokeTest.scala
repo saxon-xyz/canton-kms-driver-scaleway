@@ -25,7 +25,8 @@ object ServiceLoaderSmokeTest {
       sys.exit(1)
     }
 
-    println(s"Discovered ${factories.size} factory/factories:")
+    val count = factories.size
+    println(s"Discovered $count ${if (count == 1) "factory" else "factories"}:")
     factories.foreach { factory =>
       println(s"  - name='${factory.name}', version=${factory.version}, class=${factory.getClass.getName}")
       factory.buildInfo.foreach(info => println(s"    buildInfo: $info"))

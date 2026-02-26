@@ -52,7 +52,12 @@ class ScalewayKmsDriver(
         )
     }
 
-    val name = keyName.getOrElse(s"scaleway-kms-signing-${signingKeySpec.toString.toLowerCase}")
+    val specName = signingKeySpec match {
+      case SigningKeySpec.EcP256 => "ec-p256"
+      case SigningKeySpec.EcP384 => "ec-p384"
+      case other => other.toString.toLowerCase
+    }
+    val name = keyName.getOrElse(s"scaleway-kms-signing-$specName")
     client.createKey(name, KeyUsage.AsymmetricSigning, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated signing key pair: ${key.id}")
@@ -80,7 +85,11 @@ class ScalewayKmsDriver(
         )
     }
 
-    val name = keyName.getOrElse(s"scaleway-kms-encryption-${encryptionKeySpec.toString.toLowerCase}")
+    val specName = encryptionKeySpec match {
+      case EncryptionKeySpec.Rsa2048 => "rsa-2048"
+      case other => other.toString.toLowerCase
+    }
+    val name = keyName.getOrElse(s"scaleway-kms-encryption-$specName")
     client.createKey(name, KeyUsage.AsymmetricEncryption, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated encryption key pair: ${key.id}")
