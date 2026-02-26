@@ -1,179 +1,276 @@
 package com.saxonxyz.canton.kms.scaleway
 
-import com.daml.kms.driver._
+import com.digitalasset.canton.crypto.kms.driver.api.v1._
 import com.saxonxyz.canton.kms.scaleway.ScalewayModels._
 import com.typesafe.scalalogging.LazyLogging
+import io.opentelemetry.context.Context
 
-import java.security.PublicKey
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.{ExecutionContext, Future}
 
 class ScalewayKmsDriver(
   config: ScalewayKmsConfig,
-  client: ScalewayKmsClient
+  client: ScalewayKmsClient,
+  ec: ExecutionContext
 ) extends KmsDriver with LazyLogging {
 
-  override def name: String = "scaleway"
+  private implicit val executionContext: ExecutionContext = ec
 
-  override def health(): DriverHealth = {
+  override val supportedSigningKeySpecs: Set[SigningKeySpec] =
+    Set(SigningKeySpec.EcP256, SigningKeySpec.EcP384)
+
+  override val supportedSigningAlgoSpecs: Set[SigningAlgoSpec] =
+    Set(SigningAlgoSpec.EcDsaSha256, SigningAlgoSpec.EcDsaSha384)
+
+  override val supportedEncryptionKeySpecs: Set[EncryptionKeySpec] =
+    Set(EncryptionKeySpec.Rsa2048)
+
+  override val supportedEncryptionAlgoSpecs: Set[EncryptionAlgoSpec] =
+    Set(EncryptionAlgoSpec.RsaEsOaepSha256)
+
+  override def health: Future[KmsDriverHealth] = Future {
     client.healthCheck() match {
-      case Right(_) => DriverHealth.Healthy
+      case Right(_) => KmsDriverHealth.Ok
       case Left(err) =>
         logger.warn(s"Health check failed: $err")
-        DriverHealth.Unhealthy(err)
+        KmsDriverHealth.Failed(err)
     }
   }
 
   override def generateSigningKeyPair(
-    keyName: String,
-    spec: SigningKeySpec
-  ): Either[KmsDriverError, SigningKeyPair] = {
-    logger.info(s"Generating signing key pair: $keyName with spec $spec")
+    signingKeySpec: SigningKeySpec,
+    keyName: Option[String]
+  )(traceContext: Context): Future[String] = Future {
+    logger.info(s"Generating signing key pair with spec $signingKeySpec, name=$keyName")
 
-    val algorithm = spec match {
-      case SigningKeySpec.EcDsaP256 => KeyAlgorithm.EcdsaSignP256Sha256
-      case SigningKeySpec.EcDsaP384 => KeyAlgorithm.EcdsaSignP384Sha384
-      case SigningKeySpec.Rsa2048Sha256 => KeyAlgorithm.RsaSignPkcs1Sha256
-      case _ => return Left(KmsDriverError.UnsupportedOperation(s"Unsupported signing key spec: $spec"))
+    val algorithm = signingKeySpec match {
+      case SigningKeySpec.EcP256 => KeyAlgorithm.EcdsaSignP256Sha256
+      case SigningKeySpec.EcP384 => KeyAlgorithm.EcdsaSignP384Sha384
+      case unsupported =>
+        throw KmsDriverException(
+          new IllegalArgumentException(s"Unsupported signing key spec: $unsupported"),
+          retryable = false
+        )
     }
 
-    client.createKey(keyName, KeyUsage.AsymmetricSigning, algorithm) match {
+    val name = keyName.getOrElse(s"scaleway-kms-signing-${signingKeySpec.toString.toLowerCase}")
+    client.createKey(name, KeyUsage.AsymmetricSigning, algorithm) match {
       case Right(key) =>
-        val keyId = SigningKeyId(key.id)
-        client.getPublicKey(key.id) match {
-          case Right(publicKeyBytes) =>
-            Right(SigningKeyPair(keyId, publicKeyBytes))
-          case Left(err) =>
-            Left(KmsDriverError.InternalError(s"Failed to get public key: $err"))
-        }
+        logger.info(s"Successfully generated signing key pair: ${key.id}")
+        key.id
       case Left(err) =>
-        Left(KmsDriverError.InternalError(s"Failed to create signing key: $err"))
-    }
-  }
-
-  override def sign(
-    keyId: SigningKeyId,
-    data: Array[Byte],
-    spec: SigningKeySpec
-  ): Either[KmsDriverError, Array[Byte]] = {
-    logger.debug(s"Signing with key: ${keyId.id}")
-
-    val algorithm = spec match {
-      case SigningKeySpec.EcDsaP256 => KeyAlgorithm.EcdsaSignP256Sha256
-      case SigningKeySpec.EcDsaP384 => KeyAlgorithm.EcdsaSignP384Sha384
-      case SigningKeySpec.Rsa2048Sha256 => KeyAlgorithm.RsaSignPkcs1Sha256
-      case _ => return Left(KmsDriverError.UnsupportedOperation(s"Unsupported signing key spec: $spec"))
-    }
-
-    client.sign(keyId.id, data, algorithm) match {
-      case Right(signature) => Right(signature)
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to sign: $err"))
-    }
-  }
-
-  override def getPublicKey(keyId: SigningKeyId): Either[KmsDriverError, Array[Byte]] = {
-    logger.debug(s"Getting public key for: ${keyId.id}")
-    
-    client.getPublicKey(keyId.id) match {
-      case Right(publicKey) => Right(publicKey)
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to get public key: $err"))
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to create signing key: $err"),
+          retryable = true
+        )
     }
   }
 
   override def generateEncryptionKeyPair(
-    keyName: String,
-    spec: EncryptionKeySpec
-  ): Either[KmsDriverError, EncryptionKeyPair] = {
-    logger.info(s"Generating encryption key pair: $keyName with spec $spec")
+    encryptionKeySpec: EncryptionKeySpec,
+    keyName: Option[String]
+  )(traceContext: Context): Future[String] = Future {
+    logger.info(s"Generating encryption key pair with spec $encryptionKeySpec, name=$keyName")
 
-    val algorithm = spec match {
+    val algorithm = encryptionKeySpec match {
       case EncryptionKeySpec.Rsa2048 => KeyAlgorithm.RsaOaepSha256
-      case _ => return Left(KmsDriverError.UnsupportedOperation(s"Unsupported encryption key spec: $spec"))
+      case unsupported =>
+        throw KmsDriverException(
+          new IllegalArgumentException(s"Unsupported encryption key spec: $unsupported"),
+          retryable = false
+        )
     }
 
-    client.createKey(keyName, KeyUsage.AsymmetricEncryption, algorithm) match {
+    val name = keyName.getOrElse(s"scaleway-kms-encryption-${encryptionKeySpec.toString.toLowerCase}")
+    client.createKey(name, KeyUsage.AsymmetricEncryption, algorithm) match {
       case Right(key) =>
-        val keyId = EncryptionKeyId(key.id)
-        client.getPublicKey(key.id) match {
-          case Right(publicKeyBytes) =>
-            Right(EncryptionKeyPair(keyId, publicKeyBytes))
-          case Left(err) =>
-            Left(KmsDriverError.InternalError(s"Failed to get public key: $err"))
-        }
+        logger.info(s"Successfully generated encryption key pair: ${key.id}")
+        key.id
       case Left(err) =>
-        Left(KmsDriverError.InternalError(s"Failed to create encryption key: $err"))
-    }
-  }
-
-  override def decrypt(
-    keyId: EncryptionKeyId,
-    ciphertext: Array[Byte]
-  ): Either[KmsDriverError, Array[Byte]] = {
-    logger.debug(s"Decrypting with key: ${keyId.id}")
-    
-    client.decrypt(keyId.id, ciphertext) match {
-      case Right(plaintext) => Right(plaintext)
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to decrypt: $err"))
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to create encryption key: $err"),
+          retryable = true
+        )
     }
   }
 
   override def generateSymmetricKey(
-    keyName: String,
-    spec: SymmetricKeySpec
-  ): Either[KmsDriverError, SymmetricKeyId] = {
-    logger.info(s"Generating symmetric key: $keyName with spec $spec")
+    keyName: Option[String]
+  )(traceContext: Context): Future[String] = Future {
+    logger.info(s"Generating symmetric key, name=$keyName")
 
-    val algorithm = spec match {
-      case SymmetricKeySpec.Aes256Gcm => KeyAlgorithm.Aes256Gcm
-      case _ => return Left(KmsDriverError.UnsupportedOperation(s"Unsupported symmetric key spec: $spec"))
+    val name = keyName.getOrElse("scaleway-kms-symmetric")
+    client.createKey(name, KeyUsage.SymmetricEncryption, KeyAlgorithm.Aes256Gcm) match {
+      case Right(key) =>
+        logger.info(s"Successfully generated symmetric key: ${key.id}")
+        key.id
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to create symmetric key: $err"),
+          retryable = true
+        )
+    }
+  }
+
+  override def sign(
+    data: Array[Byte],
+    keyId: String,
+    algoSpec: SigningAlgoSpec
+  )(traceContext: Context): Future[Array[Byte]] = Future {
+    logger.debug(s"Signing with key: $keyId, algoSpec: $algoSpec")
+
+    val algorithm = algoSpec match {
+      case SigningAlgoSpec.EcDsaSha256 => KeyAlgorithm.EcdsaSignP256Sha256
+      case SigningAlgoSpec.EcDsaSha384 => KeyAlgorithm.EcdsaSignP384Sha384
+      case unsupported =>
+        throw KmsDriverException(
+          new IllegalArgumentException(s"Unsupported signing algorithm spec: $unsupported"),
+          retryable = false
+        )
     }
 
-    client.createKey(keyName, KeyUsage.SymmetricEncryption, algorithm) match {
-      case Right(key) => Right(SymmetricKeyId(key.id))
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to create symmetric key: $err"))
+    client.sign(keyId, data, algorithm) match {
+      case Right(signature) => signature
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to sign: $err"),
+          retryable = true
+        )
+    }
+  }
+
+  override def decryptAsymmetric(
+    ciphertext: Array[Byte],
+    keyId: String,
+    algoSpec: EncryptionAlgoSpec
+  )(traceContext: Context): Future[Array[Byte]] = Future {
+    logger.debug(s"Decrypting asymmetrically with key: $keyId, algoSpec: $algoSpec")
+
+    algoSpec match {
+      case EncryptionAlgoSpec.RsaEsOaepSha256 => // supported
+      case unsupported =>
+        throw KmsDriverException(
+          new IllegalArgumentException(s"Unsupported encryption algorithm spec: $unsupported"),
+          retryable = false
+        )
+    }
+
+    client.decrypt(keyId, ciphertext) match {
+      case Right(plaintext) => plaintext
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to decrypt: $err"),
+          retryable = true
+        )
     }
   }
 
   override def encryptSymmetric(
-    keyId: SymmetricKeyId,
-    plaintext: Array[Byte],
-    associatedData: Option[Array[Byte]]
-  ): Either[KmsDriverError, Array[Byte]] = {
-    logger.debug(s"Encrypting with symmetric key: ${keyId.id}")
-    
-    client.encrypt(keyId.id, plaintext, associatedData) match {
-      case Right(ciphertext) => Right(ciphertext)
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to encrypt: $err"))
+    data: Array[Byte],
+    keyId: String
+  )(traceContext: Context): Future[Array[Byte]] = Future {
+    logger.debug(s"Encrypting symmetrically with key: $keyId")
+
+    client.encrypt(keyId, data) match {
+      case Right(ciphertext) => ciphertext
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to encrypt: $err"),
+          retryable = true
+        )
     }
   }
 
   override def decryptSymmetric(
-    keyId: SymmetricKeyId,
     ciphertext: Array[Byte],
-    associatedData: Option[Array[Byte]]
-  ): Either[KmsDriverError, Array[Byte]] = {
-    logger.debug(s"Decrypting with symmetric key: ${keyId.id}")
-    
-    // For AES-GCM, the ciphertext contains iv + encrypted data + tag
-    // Scaleway API handles this internally, so we just pass the ciphertext
-    client.decrypt(keyId.id, ciphertext) match {
-      case Right(plaintext) => Right(plaintext)
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to decrypt: $err"))
+    keyId: String
+  )(traceContext: Context): Future[Array[Byte]] = Future {
+    logger.debug(s"Decrypting symmetrically with key: $keyId")
+
+    client.decrypt(keyId, ciphertext) match {
+      case Right(plaintext) => plaintext
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to decrypt: $err"),
+          retryable = true
+        )
     }
   }
 
-  override def deleteKey(keyId: KeyId): Either[KmsDriverError, Unit] = {
-    logger.info(s"Deleting key: ${keyId.id}")
-    
-    val scwKeyId = keyId match {
-      case SigningKeyId(id) => id
-      case EncryptionKeyId(id) => id
-      case SymmetricKeyId(id) => id
-      case _ => return Left(KmsDriverError.UnsupportedOperation(s"Unsupported key type"))
-    }
+  override def getPublicKey(keyId: String)(traceContext: Context): Future[PublicKey] = Future {
+    logger.debug(s"Getting public key for: $keyId")
 
-    client.deleteKey(scwKeyId) match {
-      case Right(_) => Right(())
-      case Left(err) => Left(KmsDriverError.InternalError(s"Failed to delete key: $err"))
+    client.getKey(keyId) match {
+      case Right(key) =>
+        val keySpec: KeySpec = key.usage match {
+          case KeyUsage.AsymmetricSigning =>
+            key.algorithm match {
+              case KeyAlgorithm.EcdsaSignP256Sha256 => SigningKeySpec.EcP256
+              case KeyAlgorithm.EcdsaSignP384Sha384 => SigningKeySpec.EcP384
+              case other =>
+                throw KmsDriverException(
+                  new RuntimeException(s"Unexpected signing algorithm: $other"),
+                  retryable = false
+                )
+            }
+          case KeyUsage.AsymmetricEncryption =>
+            key.algorithm match {
+              case KeyAlgorithm.RsaOaepSha256 => EncryptionKeySpec.Rsa2048
+              case other =>
+                throw KmsDriverException(
+                  new RuntimeException(s"Unexpected encryption algorithm: $other"),
+                  retryable = false
+                )
+            }
+          case other =>
+            throw KmsDriverException(
+              new RuntimeException(s"getPublicKey called on non-asymmetric key with usage: $other"),
+              retryable = false
+            )
+        }
+        client.getPublicKey(keyId) match {
+          case Right(publicKeyBytes) => PublicKey(publicKeyBytes, keySpec)
+          case Left(err) =>
+            throw KmsDriverException(
+              new RuntimeException(s"Failed to get public key: $err"),
+              retryable = true
+            )
+        }
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to get key info: $err"),
+          retryable = true
+        )
+    }
+  }
+
+  override def keyExistsAndIsActive(keyId: String)(traceContext: Context): Future[Unit] = Future {
+    logger.debug(s"Checking if key exists and is active: $keyId")
+
+    client.getKeyStatus(keyId) match {
+      case Right(KeyStatus.Enabled) => ()
+      case Right(status) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Key $keyId is not active, status: $status"),
+          retryable = false
+        )
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to get key status: $err"),
+          retryable = true
+        )
+    }
+  }
+
+  override def deleteKey(keyId: String)(traceContext: Context): Future[Unit] = Future {
+    logger.info(s"Deleting key: $keyId")
+
+    client.deleteKey(keyId) match {
+      case Right(_) => ()
+      case Left(err) =>
+        throw KmsDriverException(
+          new RuntimeException(s"Failed to delete key: $err"),
+          retryable = true
+        )
     }
   }
 
@@ -184,8 +281,8 @@ class ScalewayKmsDriver(
 }
 
 object ScalewayKmsDriver {
-  def apply(config: ScalewayKmsConfig): ScalewayKmsDriver = {
+  def apply(config: ScalewayKmsConfig, ec: ExecutionContext): ScalewayKmsDriver = {
     val client = ScalewayKmsClient(config)
-    new ScalewayKmsDriver(config, client)
+    new ScalewayKmsDriver(config, client, ec)
   }
 }
