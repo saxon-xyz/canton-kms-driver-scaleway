@@ -1,11 +1,16 @@
 package com.saxonxyz.canton.kms.scaleway
 
+import com.digitalasset.canton.crypto.kms.driver.api.v1._
 import com.saxonxyz.canton.kms.scaleway.ScalewayModels._
+import io.opentelemetry.context.Context
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.util.UUID
+import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 import scala.util.Try
 
 class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll {
@@ -177,75 +182,59 @@ class ScalewayKmsIntegrationTest extends AnyFlatSpec with Matchers with BeforeAn
   }
 
   "ScalewayKmsDriver" should "perform health check" in skipIfNoEnv("driver health check") {
-    val driver = ScalewayKmsDriver(config.get)
-    val health = driver.health()
-    health shouldBe com.daml.kms.driver.DriverHealth.Healthy
+    val driver = ScalewayKmsDriver(config.get, global)
+    val health = Await.result(driver.health, 30.seconds)
+    health shouldBe KmsDriverHealth.Ok
     driver.close()
   }
 
   it should "generate a signing key pair" in skipIfNoEnv("driver generate signing key") {
-    val driver = ScalewayKmsDriver(config.get)
+    val driver = ScalewayKmsDriver(config.get, global)
     val keyName = s"test-driver-signing-${UUID.randomUUID()}"
-    
-    val result = driver.generateSigningKeyPair(
-      keyName,
-      com.daml.kms.driver.SigningKeySpec.EcDsaP256
+
+    val result = Await.result(
+      driver.generateSigningKeyPair(SigningKeySpec.EcP256, Some(keyName))(Context.current()),
+      30.seconds
     )
-    
-    result shouldBe a[Right[_, _]]
-    result.foreach { keyPair =>
-      createdKeyIds += keyPair.keyId.id
-      keyPair.publicKey should not be empty
-    }
-    
+
+    createdKeyIds += result
+    result should not be empty
+
     driver.close()
   }
 
   it should "generate a symmetric key and encrypt/decrypt" in skipIfNoEnv("driver symmetric operations") {
-    val driver = ScalewayKmsDriver(config.get)
+    val driver = ScalewayKmsDriver(config.get, global)
     val keyName = s"test-driver-symmetric-${UUID.randomUUID()}"
-    
-    val createResult = driver.generateSymmetricKey(
-      keyName,
-      com.daml.kms.driver.SymmetricKeySpec.Aes256Gcm
+
+    val keyId = Await.result(
+      driver.generateSymmetricKey(Some(keyName))(Context.current()),
+      30.seconds
     )
-    
-    createResult shouldBe a[Right[_, _]]
-    createResult.foreach { keyId =>
-      createdKeyIds += keyId.id
-      
-      val plaintext = "Test encryption with driver".getBytes("UTF-8")
-      val encryptResult = driver.encryptSymmetric(keyId, plaintext, None)
-      
-      encryptResult shouldBe a[Right[_, _]]
-      encryptResult.foreach { ciphertext =>
-        val decryptResult = driver.decryptSymmetric(keyId, ciphertext, None)
-        
-        decryptResult shouldBe a[Right[_, _]]
-        decryptResult.foreach { decrypted =>
-          new String(decrypted, "UTF-8") shouldBe "Test encryption with driver"
-        }
-      }
-    }
-    
+    createdKeyIds += keyId
+
+    val plaintext = "Test encryption with driver".getBytes("UTF-8")
+    val ciphertext = Await.result(
+      driver.encryptSymmetric(plaintext, keyId)(Context.current()),
+      30.seconds
+    )
+
+    val decrypted = Await.result(
+      driver.decryptSymmetric(ciphertext, keyId)(Context.current()),
+      30.seconds
+    )
+
+    new String(decrypted, "UTF-8") shouldBe "Test encryption with driver"
+
     driver.close()
   }
 
-  "ScalewayKmsDriverFactory" should "create a driver from config map" in skipIfNoEnv("factory create from map") {
+  "ScalewayKmsDriverFactory" should "create a driver from config" in skipIfNoEnv("factory create from config") {
     val factory = new ScalewayKmsDriverFactory()
-    
-    val configMap = Map(
-      "secretKey" -> secretKey.get,
-      "projectId" -> projectId.get,
-      "region" -> region.get
-    )
-    
-    val result = factory.create(configMap)
-    result shouldBe a[Right[_, _]]
-    result.foreach { driver =>
-      driver.name shouldBe "scaleway"
-      driver.health() shouldBe com.daml.kms.driver.DriverHealth.Healthy
-      driver.close()
-    }
+
+    val driver = factory.create(config.get, _ => org.slf4j.LoggerFactory.getLogger(getClass), global)
+    val health = Await.result(driver.health, 30.seconds)
+    health shouldBe KmsDriverHealth.Ok
+    driver.close()
   }
 }
