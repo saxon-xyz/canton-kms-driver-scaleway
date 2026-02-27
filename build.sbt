@@ -38,16 +38,14 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.17" % Test
 )
 
-// Official Canton KMS Driver API dependency.
-// When DA_JFROG_TOKEN is set, the official artifact is downloaded from Digital Asset Artifactory
-// and used for compilation (in Provided scope, so it is not bundled in the assembly JAR).
-// Without credentials, the local stub JAR in lib/ provides the same API for compilation.
-libraryDependencies ++= {
-  if (sys.env.contains("DA_JFROG_TOKEN"))
-    Seq("com.digitalasset.canton" % "kms-driver-api" % cantonVersion % Provided)
-  else
-    Seq.empty
-}
+// Official Canton KMS Driver API (Provided: supplied by Canton runtime at load time).
+// Requires DA_JFROG_USER / DA_JFROG_TOKEN for resolution via Digital Asset Artifactory.
+// Build fails with a clear resolution error when credentials are missing.
+libraryDependencies += "com.digitalasset.canton" % "kms-driver-api" % cantonVersion % Provided
+
+// Exclude the local canton API stubs JAR from compilation so only the official API is used.
+Compile / unmanagedJars := (Compile / unmanagedJars).value
+  .filterNot(_.data.getName.startsWith("canton-kms-driver-api-stubs"))
 
 // Assembly configuration
 assembly / assemblyMergeStrategy := {
@@ -63,6 +61,7 @@ assembly / assemblyMergeStrategy := {
 
 // Exclude the local canton API stubs JAR from assembly.
 // The Canton runtime provides the real kms-driver-api on its classpath at load time.
+// (Kept as a safety net; stubs are already excluded from unmanaged compile classpath above.)
 assembly / assemblyExcludedJars := {
   val cp = (assembly / fullClasspath).value
   cp.filter(_.data.getName.startsWith("canton-kms-driver-api-stubs"))

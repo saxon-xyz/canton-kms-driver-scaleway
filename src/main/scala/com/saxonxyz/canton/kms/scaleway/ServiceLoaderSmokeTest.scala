@@ -7,8 +7,13 @@ import scala.jdk.CollectionConverters._
 /**
  * ServiceLoader smoke test utility.
  *
- * Run with the assembled fat JAR on the classpath:
- *   java -cp scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
+ * Included in the assembly JAR so it can be used to verify SPI discovery and
+ * diagnose linkage failures (NoClassDefFoundError, ClassCastException, etc.)
+ * without requiring a live Canton environment.
+ *
+ * Build and run:
+ *   sbt clean assembly
+ *   java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
  *     com.saxonxyz.canton.kms.scaleway.ServiceLoaderSmokeTest
  */
 object ServiceLoaderSmokeTest {
@@ -18,7 +23,16 @@ object ServiceLoaderSmokeTest {
     println()
 
     val loader = java.util.ServiceLoader.load(classOf[KmsDriverFactory])
-    val factories = loader.iterator().asScala.toList
+
+    val factories = try {
+      loader.iterator().asScala.toList
+    } catch {
+      case e: java.util.ServiceConfigurationError =>
+        println("ERROR: ServiceConfigurationError while loading KmsDriverFactory providers:")
+        e.printStackTrace(System.out)
+        printCauseChain(e.getCause)
+        sys.exit(1)
+    }
 
     if (factories.isEmpty) {
       println("ERROR: No KmsDriverFactory implementations discovered!")
@@ -41,6 +55,18 @@ object ServiceLoaderSmokeTest {
         println()
         println(s"ERROR: No factory with name 'scaleway' found. Found: ${factories.map(_.name).mkString(", ")}")
         sys.exit(1)
+    }
+  }
+
+  /** Prints the full cause chain of a Throwable for diagnosing linkage errors. */
+  private def printCauseChain(cause: Throwable): Unit = {
+    var current = cause
+    var depth = 1
+    while (current != null) {
+      println(s"Caused by [depth=$depth]: ${current.getClass.getName}: ${current.getMessage}")
+      current.printStackTrace(System.out)
+      current = current.getCause
+      depth += 1
     }
   }
 }

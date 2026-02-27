@@ -18,24 +18,22 @@ Scaleway Key Management Service (KMS) driver for Canton, implementing the offici
 
 ### Digital Asset Artifactory Credentials
 
-The official Canton KMS Driver API artifact is hosted on the Digital Asset Artifactory. To build with credentials (required in CI):
+The official Canton KMS Driver API artifact is hosted on the Digital Asset Artifactory. Credentials are **required** to build; the build will fail clearly with a resolution error if they are not set:
 
 ```bash
 export DA_JFROG_USER="your-jfrog-username"
 export DA_JFROG_TOKEN="your-jfrog-api-token"
 ```
 
-When `DA_JFROG_TOKEN` is not set, the project uses a local stub JAR (`lib/canton-kms-driver-api-stubs_2.13-3.4.11.jar`) that mirrors the official API for local development.
-
 ## Building
 
-Build the project:
+Build the project (DA_JFROG_USER and DA_JFROG_TOKEN must be set):
 
 ```bash
 sbt compile
 ```
 
-Run tests (unit tests run without credentials; integration tests require Scaleway credentials):
+Run tests (unit tests run without Scaleway credentials; integration tests require them):
 
 ```bash
 export SCW_SECRET_KEY="your-secret-key"
@@ -70,9 +68,12 @@ META-INF/services/com.digitalasset.canton.crypto.kms.driver.api.v1.KmsDriverFact
 
 ## ServiceLoader Smoke Test
 
-To verify the driver is discoverable via ServiceLoader, run the smoke test with the assembled JAR on the classpath:
+The smoke test is compiled into the assembly JAR (`src/main/scala/...`). It verifies SPI discovery and surfaces linkage errors (e.g. `NoClassDefFoundError`, `ClassCastException`) with full stack traces and cause chains.
+
+Build and run:
 
 ```bash
+sbt clean assembly
 java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
      com.saxonxyz.canton.kms.scaleway.ServiceLoaderSmokeTest
 ```
