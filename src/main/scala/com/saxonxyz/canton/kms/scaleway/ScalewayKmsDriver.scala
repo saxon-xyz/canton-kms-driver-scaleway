@@ -1,7 +1,7 @@
 package com.saxonxyz.canton.kms.scaleway
 
 import com.digitalasset.canton.crypto.kms.driver.api.v1._
-import com.saxonxyz.canton.kms.scaleway.ScalewayKmsDriver.isRetryable
+import com.saxonxyz.canton.kms.scaleway.ScalewayKmsDriver.{isRetryable, uniqueKeyName}
 import com.saxonxyz.canton.kms.scaleway.ScalewayModels._
 import com.typesafe.scalalogging.LazyLogging
 import io.opentelemetry.context.Context
@@ -58,7 +58,7 @@ class ScalewayKmsDriver(
       case SigningKeySpec.EcP384 => "ec-p384"
       case other => other.toString.toLowerCase
     }
-    val name = keyName.getOrElse(s"scaleway-kms-signing-$specName")
+    val name = uniqueKeyName(keyName, s"scaleway-kms-signing-$specName")
     client.createKey(name, KeyUsage.AsymmetricSigning, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated signing key pair: ${key.id}")
@@ -90,7 +90,7 @@ class ScalewayKmsDriver(
       case EncryptionKeySpec.Rsa2048 => "rsa-2048"
       case other => other.toString.toLowerCase
     }
-    val name = keyName.getOrElse(s"scaleway-kms-encryption-$specName")
+    val name = uniqueKeyName(keyName, s"scaleway-kms-encryption-$specName")
     client.createKey(name, KeyUsage.AsymmetricEncryption, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated encryption key pair: ${key.id}")
@@ -108,7 +108,7 @@ class ScalewayKmsDriver(
   )(traceContext: Context): Future[String] = Future {
     logger.info(s"Generating symmetric key, name=$keyName")
 
-    val name = keyName.getOrElse("scaleway-kms-symmetric")
+    val name = uniqueKeyName(keyName, "scaleway-kms-symmetric")
     client.createKey(name, KeyUsage.SymmetricEncryption, KeyAlgorithm.Aes256Gcm) match {
       case Right(key) =>
         logger.info(s"Successfully generated symmetric key: ${key.id}")
@@ -297,6 +297,13 @@ object ScalewayKmsDriver {
     val client = ScalewayKmsClient(config)
     new ScalewayKmsDriver(config, client, ec)
   }
+
+  /** Scaleway key names must be unique per project, and Canton may ask for several keys of
+    * the same kind (no name, or the same name across rotations). A fixed name made every
+    * second request fail with 409 "key name must be unique", so always add a short suffix.
+    */
+  def uniqueKeyName(requested: Option[String], default: String): String =
+    s"${requested.getOrElse(default)}-${java.util.UUID.randomUUID().toString.take(8)}"
 
   private val HttpStatus = """: (\d{3}) - """.r
 

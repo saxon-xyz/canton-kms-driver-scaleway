@@ -156,7 +156,11 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
                 .mkString
                 .replaceAll("\\s", "")
 
-              Base64.getDecoder.decode(pemBody)
+              val der = Base64.getDecoder.decode(pemBody)
+              // Canton wants X.509 SubjectPublicKeyInfo. Scaleway returns EC keys that way
+              // but RSA keys as PKCS#1 ("BEGIN RSA PUBLIC KEY"), which Canton rejects.
+              if (pkResp.pem.contains("BEGIN RSA PUBLIC KEY")) ScalewayKmsClient.rsaPkcs1ToSpki(der)
+              else der
             } match {
               case Success(bytes) => Right(bytes)
               case Failure(ex) => Left(s"Failed to decode public key: ${ex.getMessage}")
@@ -193,7 +197,7 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
     }
 
     val encodedHash = Base64.getEncoder.encodeToString(hash)
-    val signRequest = SignRequest(key_id = keyId, data = encodedHash)
+    val signRequest = SignRequest(key_id = keyId, digest = encodedHash)
 
     val request = basicRequest
       .post(uri"$baseUri/keys/$keyId/sign")
@@ -349,5 +353,26 @@ object ScalewayKmsClient {
   def apply(config: ScalewayKmsConfig): ScalewayKmsClient = {
     val backend = HttpClientSyncBackend()
     new ScalewayKmsClient(config, backend)
+  }
+
+  // AlgorithmIdentifier { rsaEncryption (1.2.840.113549.1.1.1), NULL }
+  private val RsaAlgorithmId: Array[Byte] =
+    Array(0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00)
+      .map(_.toByte)
+
+  private def derLength(n: Int): Array[Byte] =
+    if (n < 0x80) Array(n.toByte)
+    else {
+      val bytes = BigInt(n).toByteArray.dropWhile(_ == 0)
+      (0x80 | bytes.length).toByte +: bytes
+    }
+
+  /** Wrap a PKCS#1 RSAPublicKey in an X.509 SubjectPublicKeyInfo:
+    * SEQUENCE { AlgorithmIdentifier, BIT STRING { 0 unused bits, RSAPublicKey } }.
+    */
+  def rsaPkcs1ToSpki(pkcs1: Array[Byte]): Array[Byte] = {
+    val bitString = Array(0x03.toByte) ++ derLength(pkcs1.length + 1) ++ Array(0.toByte) ++ pkcs1
+    val body = RsaAlgorithmId ++ bitString
+    Array(0x30.toByte) ++ derLength(body.length) ++ body
   }
 }

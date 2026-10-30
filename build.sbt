@@ -42,6 +42,9 @@ libraryDependencies += "com.daml" %% "kms-driver-api" % cantonVersion % Provided
 // DA's reusable driver test suite (KmsDriverTest / KmsDriverFactoryTest).
 libraryDependencies += "com.daml" %% "kms-driver-testing" % cantonVersion % Test
 
+// Don't run the test suites as part of `assembly`; the Scaleway-backed ones need credentials.
+assembly / test := {}
+
 // Assembly configuration
 assembly / assemblyMergeStrategy := {
   case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
