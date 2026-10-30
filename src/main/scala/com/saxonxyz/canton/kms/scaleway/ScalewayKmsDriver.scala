@@ -1,6 +1,7 @@
 package com.saxonxyz.canton.kms.scaleway
 
 import com.digitalasset.canton.crypto.kms.driver.api.v1._
+import com.saxonxyz.canton.kms.scaleway.ScalewayKmsDriver.isRetryable
 import com.saxonxyz.canton.kms.scaleway.ScalewayModels._
 import com.typesafe.scalalogging.LazyLogging
 import io.opentelemetry.context.Context
@@ -65,7 +66,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create signing key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -97,7 +98,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create encryption key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -115,7 +116,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create symmetric key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -142,7 +143,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to sign: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -168,7 +169,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to decrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -186,7 +187,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to encrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -202,7 +203,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to decrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -243,13 +244,13 @@ class ScalewayKmsDriver(
           case Left(err) =>
             throw KmsDriverException(
               new RuntimeException(s"Failed to get public key: $err"),
-              retryable = true
+              retryable = isRetryable(err)
             )
         }
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to get key info: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -267,7 +268,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to get key status: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -280,7 +281,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to delete key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -296,4 +297,16 @@ object ScalewayKmsDriver {
     val client = ScalewayKmsClient(config)
     new ScalewayKmsDriver(config, client, ec)
   }
+
+  private val HttpStatus = """: (\d{3}) - """.r
+
+  /** Client errors carry the HTTP status as "...: <code> - <body>". A 4xx other than 429 is
+    * permanent (bad credentials, missing IAM permission, unknown key), so Canton must not
+    * retry it forever; 429, 5xx and transport errors (no status) stay retryable.
+    */
+  def isRetryable(err: String): Boolean =
+    HttpStatus.findFirstMatchIn(err).map(_.group(1).toInt) match {
+      case Some(code) if code >= 400 && code < 500 => code == 429
+      case _ => true
+    }
 }
