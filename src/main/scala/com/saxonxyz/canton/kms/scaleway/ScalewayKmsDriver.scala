@@ -15,16 +15,16 @@ class ScalewayKmsDriver(
 
   private implicit val executionContext: ExecutionContext = ec
 
-  override val supportedSigningKeySpecs: Set[SigningKeySpec] =
+  override def supportedSigningKeySpecs: Set[SigningKeySpec] =
     Set(SigningKeySpec.EcP256, SigningKeySpec.EcP384)
 
-  override val supportedSigningAlgoSpecs: Set[SigningAlgoSpec] =
+  override def supportedSigningAlgoSpecs: Set[SigningAlgoSpec] =
     Set(SigningAlgoSpec.EcDsaSha256, SigningAlgoSpec.EcDsaSha384)
 
-  override val supportedEncryptionKeySpecs: Set[EncryptionKeySpec] =
+  override def supportedEncryptionKeySpecs: Set[EncryptionKeySpec] =
     Set(EncryptionKeySpec.Rsa2048)
 
-  override val supportedEncryptionAlgoSpecs: Set[EncryptionAlgoSpec] =
+  override def supportedEncryptionAlgoSpecs: Set[EncryptionAlgoSpec] =
     Set(EncryptionAlgoSpec.RsaEsOaepSha256)
 
   override def health: Future[KmsDriverHealth] = Future {

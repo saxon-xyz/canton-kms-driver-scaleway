@@ -1,51 +1,46 @@
-val cantonVersion = "3.4.11"
+// Canton release the driver API is compiled against. Match the fleet's participant
+// (Splice 0.9.x ships Canton 3.6). The v1 driver API is stable within a minor line.
+val cantonVersion = "3.6.4"
 
 name := "scaleway-kms-driver"
 organization := "com.saxonxyz"
 version := "0.1.0-SNAPSHOT"
-scalaVersion := "2.13.12"
+scalaVersion := "2.13.18" // Canton 3.6.4's
 
-resolvers += "Digital Asset Artifactory" at "https://digitalasset.jfrog.io/artifactory/canton-kms-driver-api/"
-
-credentials += Credentials(
-  "Artifactory Realm",
-  "digitalasset.jfrog.io",
-  sys.env.getOrElse("DA_JFROG_USER", ""),
-  sys.env.getOrElse("DA_JFROG_TOKEN", "")
-)
-
+// Everything Canton already ships is Provided, so the driver JAR carries only our own
+// classes. Bundling a second copy of logback/pureconfig/circe/scala-library onto Canton's
+// flat classpath is what broke loading: with the old fat JAR, Canton 3.6.4 cannot even
+// initialise logging (logback EmptyStackException) before it gets to the KMS driver.
+// Versions are PINNED to what Canton 3.6.4 ships (its third-party-licenses.html and the
+// kms-driver-api POM): compiling against pureconfig 0.17.4 while Canton runs 0.14.0 gave
+// NoSuchMethodError in the derived config reader. Re-pin on every Canton minor bump.
 libraryDependencies ++= Seq(
-  // OpenTelemetry (required by kms-driver-api; also in local stubs compilation classpath)
-  "io.opentelemetry" % "opentelemetry-api" % "1.32.0",
+  "com.softwaremill.sttp.client3" %% "core" % "3.11.0" % Provided,
+  "io.circe" %% "circe-core" % "0.14.2" % Provided,
+  "io.circe" %% "circe-generic" % "0.14.2" % Provided,
+  "io.circe" %% "circe-parser" % "0.14.2" % Provided,
+  "com.github.pureconfig" %% "pureconfig" % "0.14.0" % Provided,
+  "ch.qos.logback" % "logback-classic" % "1.6.3" % Provided,
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5" % Provided,
 
-  // HTTP client
-  "com.softwaremill.sttp.client3" %% "core" % "3.9.1",
-  "com.softwaremill.sttp.client3" %% "circe" % "3.9.1",
-
-  // JSON
-  "io.circe" %% "circe-core" % "0.14.6",
-  "io.circe" %% "circe-generic" % "0.14.6",
-  "io.circe" %% "circe-parser" % "0.14.6",
-
-  // Configuration
-  "com.github.pureconfig" %% "pureconfig" % "0.17.4",
-
-  // Logging
-  "ch.qos.logback" % "logback-classic" % "1.4.11",
-  "com.typesafe.scala-logging" %% "scala-logging" % "3.9.5",
+  // The one library Canton does not ship: sttp's circe integration. Bundle it without
+  // its transitive deps (sttp core and circe come from Canton).
+  ("com.softwaremill.sttp.client3" %% "circe" % "3.11.0").intransitive(),
 
   // Testing
   "org.scalatest" %% "scalatest" % "3.2.17" % Test
 )
 
-// Official Canton KMS Driver API (Provided: supplied by Canton runtime at load time).
-// Requires DA_JFROG_USER / DA_JFROG_TOKEN for resolution via Digital Asset Artifactory.
-// Build fails with a clear resolution error when credentials are missing.
-libraryDependencies += "com.digitalasset.canton" % "kms-driver-api" % cantonVersion % Provided
+// Canton provides the Scala library too.
+assembly / assemblyOption ~= (_.withIncludeScala(false))
 
-// Exclude the local canton API stubs JAR from compilation so only the official API is used.
-Compile / unmanagedJars := (Compile / unmanagedJars).value
-  .filterNot(_.data.getName.startsWith("canton-kms-driver-api-stubs"))
+// Official Canton KMS Driver API, published on Maven Central (no DA Artifactory needed).
+// Provided: the Canton runtime supplies it, along with opentelemetry-api, at load time.
+// See canton-network/cf-docs global-synchronizer/reference/kms-driver-guide.mdx.
+libraryDependencies += "com.daml" %% "kms-driver-api" % cantonVersion % Provided
+
+// DA's reusable driver test suite (KmsDriverTest / KmsDriverFactoryTest).
+libraryDependencies += "com.daml" %% "kms-driver-testing" % cantonVersion % Test
 
 // Assembly configuration
 assembly / assemblyMergeStrategy := {
