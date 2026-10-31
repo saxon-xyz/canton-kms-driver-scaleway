@@ -1,6 +1,7 @@
 package com.saxonxyz.canton.kms.scaleway
 
 import com.digitalasset.canton.crypto.kms.driver.api.v1._
+import com.saxonxyz.canton.kms.scaleway.ScalewayKmsDriver.{isRetryable, uniqueKeyName}
 import com.saxonxyz.canton.kms.scaleway.ScalewayModels._
 import com.typesafe.scalalogging.LazyLogging
 import io.opentelemetry.context.Context
@@ -15,16 +16,16 @@ class ScalewayKmsDriver(
 
   private implicit val executionContext: ExecutionContext = ec
 
-  override val supportedSigningKeySpecs: Set[SigningKeySpec] =
+  override def supportedSigningKeySpecs: Set[SigningKeySpec] =
     Set(SigningKeySpec.EcP256, SigningKeySpec.EcP384)
 
-  override val supportedSigningAlgoSpecs: Set[SigningAlgoSpec] =
+  override def supportedSigningAlgoSpecs: Set[SigningAlgoSpec] =
     Set(SigningAlgoSpec.EcDsaSha256, SigningAlgoSpec.EcDsaSha384)
 
-  override val supportedEncryptionKeySpecs: Set[EncryptionKeySpec] =
+  override def supportedEncryptionKeySpecs: Set[EncryptionKeySpec] =
     Set(EncryptionKeySpec.Rsa2048)
 
-  override val supportedEncryptionAlgoSpecs: Set[EncryptionAlgoSpec] =
+  override def supportedEncryptionAlgoSpecs: Set[EncryptionAlgoSpec] =
     Set(EncryptionAlgoSpec.RsaEsOaepSha256)
 
   override def health: Future[KmsDriverHealth] = Future {
@@ -57,7 +58,7 @@ class ScalewayKmsDriver(
       case SigningKeySpec.EcP384 => "ec-p384"
       case other => other.toString.toLowerCase
     }
-    val name = keyName.getOrElse(s"scaleway-kms-signing-$specName")
+    val name = uniqueKeyName(keyName, s"scaleway-kms-signing-$specName")
     client.createKey(name, KeyUsage.AsymmetricSigning, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated signing key pair: ${key.id}")
@@ -65,7 +66,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create signing key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -89,7 +90,7 @@ class ScalewayKmsDriver(
       case EncryptionKeySpec.Rsa2048 => "rsa-2048"
       case other => other.toString.toLowerCase
     }
-    val name = keyName.getOrElse(s"scaleway-kms-encryption-$specName")
+    val name = uniqueKeyName(keyName, s"scaleway-kms-encryption-$specName")
     client.createKey(name, KeyUsage.AsymmetricEncryption, algorithm) match {
       case Right(key) =>
         logger.info(s"Successfully generated encryption key pair: ${key.id}")
@@ -97,7 +98,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create encryption key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -107,7 +108,7 @@ class ScalewayKmsDriver(
   )(traceContext: Context): Future[String] = Future {
     logger.info(s"Generating symmetric key, name=$keyName")
 
-    val name = keyName.getOrElse("scaleway-kms-symmetric")
+    val name = uniqueKeyName(keyName, "scaleway-kms-symmetric")
     client.createKey(name, KeyUsage.SymmetricEncryption, KeyAlgorithm.Aes256Gcm) match {
       case Right(key) =>
         logger.info(s"Successfully generated symmetric key: ${key.id}")
@@ -115,7 +116,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to create symmetric key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -142,7 +143,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to sign: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -168,7 +169,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to decrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -186,7 +187,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to encrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -202,7 +203,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to decrypt: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -243,13 +244,13 @@ class ScalewayKmsDriver(
           case Left(err) =>
             throw KmsDriverException(
               new RuntimeException(s"Failed to get public key: $err"),
-              retryable = true
+              retryable = isRetryable(err)
             )
         }
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to get key info: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -267,7 +268,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to get key status: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -280,7 +281,7 @@ class ScalewayKmsDriver(
       case Left(err) =>
         throw KmsDriverException(
           new RuntimeException(s"Failed to delete key: $err"),
-          retryable = true
+          retryable = isRetryable(err)
         )
     }
   }
@@ -296,4 +297,23 @@ object ScalewayKmsDriver {
     val client = ScalewayKmsClient(config)
     new ScalewayKmsDriver(config, client, ec)
   }
+
+  /** Scaleway key names must be unique per project, and Canton may ask for several keys of
+    * the same kind (no name, or the same name across rotations). A fixed name made every
+    * second request fail with 409 "key name must be unique", so always add a short suffix.
+    */
+  def uniqueKeyName(requested: Option[String], default: String): String =
+    s"${requested.getOrElse(default)}-${java.util.UUID.randomUUID().toString.take(8)}"
+
+  private val HttpStatus = """: (\d{3}) - """.r
+
+  /** Client errors carry the HTTP status as "...: <code> - <body>". A 4xx other than 429 is
+    * permanent (bad credentials, missing IAM permission, unknown key), so Canton must not
+    * retry it forever; 429, 5xx and transport errors (no status) stay retryable.
+    */
+  def isRetryable(err: String): Boolean =
+    HttpStatus.findFirstMatchIn(err).map(_.group(1).toInt) match {
+      case Some(code) if code >= 400 && code < 500 => code == 429
+      case _ => true
+    }
 }

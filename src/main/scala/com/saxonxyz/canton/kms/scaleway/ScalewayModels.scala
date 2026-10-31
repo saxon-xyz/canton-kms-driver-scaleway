@@ -236,7 +236,7 @@ object ScalewayModels {
   // Sign request
   case class SignRequest(
     key_id: String,
-    data: String  // Base64 encoded hash
+    digest: String  // Base64 hash (Scaleway SignRequest.digest; the API also accepts msg)
   )
 
   object SignRequest {

@@ -16,18 +16,12 @@ Scaleway Key Management Service (KMS) driver for Canton, implementing the offici
 
 ## Prerequisites
 
-### Digital Asset Artifactory Credentials
-
-The official Canton KMS Driver API artifact is hosted on the Digital Asset Artifactory. Credentials are **required** to build; the build will fail clearly with a resolution error if they are not set:
-
-```bash
-export DA_JFROG_USER="your-jfrog-username"
-export DA_JFROG_TOKEN="your-jfrog-api-token"
-```
+None beyond sbt and a JDK. The Canton KMS Driver API is on **Maven Central**
+(`com.daml` %% `kms-driver-api`), so no Digital Asset Artifactory credentials are needed.
 
 ## Building
 
-Build the project (DA_JFROG_USER and DA_JFROG_TOKEN must be set):
+Build the project:
 
 ```bash
 sbt compile
@@ -116,26 +110,60 @@ scaleway {
 
 ### Canton Integration
 
-Configure Canton to load the driver by adding the JAR to `EXTRA_CLASSPATH` and referencing the driver by name `scaleway` in Canton's KMS configuration:
+The JAR is **thin**: it contains only this driver (plus sttp's small circe module). Scala,
+logback, pureconfig, circe and sttp core come from Canton at runtime, and `build.sbt` pins
+them to the versions Canton 3.6.4 ships. A fat JAR that bundled its own copies broke
+Canton's logging at startup and gave `NoSuchMethodError` in the config reader. **Re-pin
+the versions in `build.sbt` whenever the fleet moves to a new Canton minor.**
+
+Put the JAR on Canton's class path and select the driver by `name` (not `driver-name`):
 
 ```hocon
-canton {
-  participants {
-    myParticipant {
-      crypto {
-        kms {
-          type = driver
-          driver-name = scaleway
-          config {
-            secret-key = ${SCW_SECRET_KEY}
-            project-id = ${SCW_PROJECT_ID}
-            region = ${SCW_REGION}
-          }
-        }
-      }
-    }
+canton.participants.participant1.crypto.provider = kms
+canton.participants.participant1.crypto.kms {
+  type = driver
+  name = "scaleway"
+  config {
+    secret-key = ${SCW_SECRET_KEY}
+    project-id = ${SCW_PROJECT_ID}
+    region = ${SCW_REGION}
   }
 }
+# Strongly recommended, see "Latency" below.
+canton.participants.participant1.crypto.session-signing-keys.enabled = true
+```
+
+With the Splice `splice-participant` Helm chart, set it the same way the Canton Foundation's
+GCP and AWS KMS examples do:
+
+```yaml
+additionalEnvVars:
+  - name: ADDITIONAL_CONFIG_SESSION_SIGNING_KEYS
+    value: canton.participants.participant.crypto.session-signing-keys.enabled = true
+```
+
+### Latency
+
+Without session signing keys, every protocol message is signed by a remote call to Scaleway
+Key Manager. With them, most messages are signed by a short-lived in-memory key and the KMS
+is only called to authorise that key. Measured on a local Canton 3.6.4 network (BFT
+sequencer, Scaleway `fr-par`, one warm-up ping then 10 pings, median and range in ms):
+
+| participant1 keys | self-ping | ping to a 2nd participant |
+|---|---|---|
+| Scaleway KMS, no session signing keys | 2989 (2835–3349) | 2397 (2176–2872) |
+| Scaleway KMS + session signing keys | **865 (805–998)** | **843 (820–1053)** |
+| Software keys, no KMS | 939 (829–972) | 944 (828–981) |
+
+With session signing keys the KMS participant is as fast as one with software keys. The
+trade-off, as the Canton docs note, is that someone with a memory snapshot of the participant
+could use a session key for its lifetime. Throughput under sustained load is not measured yet.
+
+Local check against an open-source Canton release:
+
+```bash
+java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar:canton-open-source-3.6.4/lib/canton-open-source-3.6.4.jar \
+  com.digitalasset.canton.CantonCommunityApp daemon -c canton.conf
 ```
 
 ## SPI Registration
