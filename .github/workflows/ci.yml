@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21" # what the Splice participant image runs
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
+      # DA's suite and the integration tests need real Scaleway credentials, which CI does
+      # not hold: they cancel cleanly here. Run them locally before a release (see README).
+      - name: Test (unit)
+        run: sbt -batch test
+      - name: Build the driver JAR
+        run: sbt -batch assembly

@@ -19,6 +19,12 @@ Scaleway Key Management Service (KMS) driver for Canton, implementing the offici
 None beyond sbt and a JDK. The Canton KMS Driver API is on **Maven Central**
 (`com.daml` %% `kms-driver-api`), so no Digital Asset Artifactory credentials are needed.
 
+## Get the driver
+
+Download `canton-kms-driver-scaleway-<version>.jar` and its `.sha256` from
+[Releases](../../releases), and check it: `sha256sum -c canton-kms-driver-scaleway-<version>.jar.sha256`.
+Use a driver release built for your Canton minor version. Or build it yourself, below.
+
 ## Building
 
 Build the project:
@@ -36,7 +42,7 @@ export SCW_REGION="fr-par"  # or nl-ams, pl-waw
 sbt test
 ```
 
-Build fat JAR for use with Canton's `EXTRA_CLASSPATH`:
+Build the (thin) driver JAR:
 
 ```bash
 sbt clean assembly
@@ -44,7 +50,7 @@ sbt clean assembly
 
 The assembled JAR will be at:
 ```
-target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar
+target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar
 ```
 
 ## Verifying the Assembly JAR
@@ -52,7 +58,7 @@ target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar
 After building, verify the SPI entry is present:
 
 ```bash
-jar tf target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar | grep 'META-INF/services/com.digitalasset.canton.crypto.kms.driver.api.v1.KmsDriverFactory'
+jar tf target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar | grep 'META-INF/services/com.digitalasset.canton.crypto.kms.driver.api.v1.KmsDriverFactory'
 ```
 
 Expected output:
@@ -68,7 +74,7 @@ Build and run:
 
 ```bash
 sbt clean assembly
-java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
+java -cp target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar \
      com.saxonxyz.canton.kms.scaleway.ServiceLoaderSmokeTest
 ```
 
@@ -142,6 +148,54 @@ additionalEnvVars:
     value: canton.participants.participant.crypto.session-signing-keys.enabled = true
 ```
 
+### Splice / Kubernetes
+
+No custom image is needed. The Splice participant image's `bin/canton` appends
+`EXTRA_CLASSPATH` to Canton's class path, so mount the JAR (about 250 KB, fits in a
+ConfigMap) and point that variable at it:
+
+```bash
+kubectl -n <namespace> create configmap canton-kms-driver \
+  --from-file=driver.jar=canton-kms-driver-scaleway-<version>.jar
+kubectl -n <namespace> create secret generic scaleway-kms --from-literal=secretKey=<secret-key>
+```
+
+`splice-participant` Helm values. `.Values.kms` is written into Canton's `crypto.kms`
+unquoted: quote plain strings inside the YAML string, and leave `${SCW_SECRET_KEY}` unquoted
+so HOCON substitutes it from the environment (the secret never enters the values file):
+
+```yaml
+kms:
+  type: driver
+  name: '"scaleway"'
+  config:
+    secretKey: ${SCW_SECRET_KEY}
+    projectId: '"<project-id>"'
+    region: '"fr-par"'
+additionalEnvVars:
+  - name: SCW_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: scaleway-kms
+        key: secretKey
+  - name: EXTRA_CLASSPATH
+    value: /opt/canton-kms/driver.jar
+  - name: ADDITIONAL_CONFIG_SESSION_SIGNING_KEYS
+    value: canton.participants.participant.crypto.session-signing-keys.enabled = true
+extraVolumes:
+  - name: kms-driver
+    configMap:
+      name: canton-kms-driver
+extraVolumeMounts:
+  - name: kms-driver
+    mountPath: /opt/canton-kms
+```
+
+`EXTRA_CLASSPATH` loading was checked with the official Splice 0.9.4 participant image, and
+`helm template` of `splice-participant` 0.9.4 renders these values to the intended HOCON. Not
+yet installed through the chart in a cluster. A KMS participant must be a fresh participant:
+Canton cannot move an existing participant's keys into a KMS.
+
 ### Latency
 
 Without session signing keys, every protocol message is signed by a remote call to Scaleway
@@ -162,7 +216,7 @@ could use a session key for its lifetime. Throughput under sustained load is not
 Local check against an open-source Canton release:
 
 ```bash
-java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar:canton-open-source-3.6.4/lib/canton-open-source-3.6.4.jar \
+java -cp target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar:canton-open-source-3.6.4/lib/canton-open-source-3.6.4.jar \
   com.digitalasset.canton.CantonCommunityApp daemon -c canton.conf
 ```
 
