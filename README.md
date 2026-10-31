@@ -19,6 +19,12 @@ Scaleway Key Management Service (KMS) driver for Canton, implementing the offici
 None beyond sbt and a JDK. The Canton KMS Driver API is on **Maven Central**
 (`com.daml` %% `kms-driver-api`), so no Digital Asset Artifactory credentials are needed.
 
+## Get the driver
+
+Download `canton-kms-driver-scaleway-<version>.jar` and its `.sha256` from
+[Releases](../../releases), and check it: `sha256sum -c canton-kms-driver-scaleway-<version>.jar.sha256`.
+Use a driver release built for your Canton minor version. Or build it yourself, below.
+
 ## Building
 
 Build the project:
@@ -36,7 +42,7 @@ export SCW_REGION="fr-par"  # or nl-ams, pl-waw
 sbt test
 ```
 
-Build fat JAR for use with Canton's `EXTRA_CLASSPATH`:
+Build the (thin) driver JAR:
 
 ```bash
 sbt clean assembly
@@ -141,6 +147,54 @@ additionalEnvVars:
   - name: ADDITIONAL_CONFIG_SESSION_SIGNING_KEYS
     value: canton.participants.participant.crypto.session-signing-keys.enabled = true
 ```
+
+### Splice / Kubernetes
+
+No custom image is needed. The Splice participant image's `bin/canton` appends
+`EXTRA_CLASSPATH` to Canton's class path, so mount the JAR (about 250 KB, fits in a
+ConfigMap) and point that variable at it:
+
+```bash
+kubectl -n <namespace> create configmap canton-kms-driver \
+  --from-file=driver.jar=canton-kms-driver-scaleway-<version>.jar
+kubectl -n <namespace> create secret generic scaleway-kms --from-literal=secretKey=<secret-key>
+```
+
+`splice-participant` Helm values. `.Values.kms` is written into Canton's `crypto.kms`
+unquoted: quote plain strings inside the YAML string, and leave `${SCW_SECRET_KEY}` unquoted
+so HOCON substitutes it from the environment (the secret never enters the values file):
+
+```yaml
+kms:
+  type: driver
+  name: '"scaleway"'
+  config:
+    secretKey: ${SCW_SECRET_KEY}
+    projectId: '"<project-id>"'
+    region: '"fr-par"'
+additionalEnvVars:
+  - name: SCW_SECRET_KEY
+    valueFrom:
+      secretKeyRef:
+        name: scaleway-kms
+        key: secretKey
+  - name: EXTRA_CLASSPATH
+    value: /opt/canton-kms/driver.jar
+  - name: ADDITIONAL_CONFIG_SESSION_SIGNING_KEYS
+    value: canton.participants.participant.crypto.session-signing-keys.enabled = true
+extraVolumes:
+  - name: kms-driver
+    configMap:
+      name: canton-kms-driver
+extraVolumeMounts:
+  - name: kms-driver
+    mountPath: /opt/canton-kms
+```
+
+`EXTRA_CLASSPATH` loading was checked with the official Splice 0.9.4 participant image, and
+`helm template` of `splice-participant` 0.9.4 renders these values to the intended HOCON. Not
+yet installed through the chart in a cluster. A KMS participant must be a fresh participant:
+Canton cannot move an existing participant's keys into a KMS.
 
 ### Latency
 
