@@ -13,7 +13,7 @@ import scala.jdk.CollectionConverters._
  *
  * Build and run:
  *   sbt clean assembly
- *   java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
+ *   java -cp target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar \
  *     com.saxonxyz.canton.kms.scaleway.ServiceLoaderSmokeTest
  */
 object ServiceLoaderSmokeTest {

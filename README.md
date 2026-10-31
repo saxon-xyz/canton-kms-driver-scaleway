@@ -44,7 +44,7 @@ sbt clean assembly
 
 The assembled JAR will be at:
 ```
-target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar
+target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar
 ```
 
 ## Verifying the Assembly JAR
@@ -52,7 +52,7 @@ target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar
 After building, verify the SPI entry is present:
 
 ```bash
-jar tf target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar | grep 'META-INF/services/com.digitalasset.canton.crypto.kms.driver.api.v1.KmsDriverFactory'
+jar tf target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar | grep 'META-INF/services/com.digitalasset.canton.crypto.kms.driver.api.v1.KmsDriverFactory'
 ```
 
 Expected output:
@@ -68,7 +68,7 @@ Build and run:
 
 ```bash
 sbt clean assembly
-java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar \
+java -cp target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar \
      com.saxonxyz.canton.kms.scaleway.ServiceLoaderSmokeTest
 ```
 
@@ -162,7 +162,7 @@ could use a session key for its lifetime. Throughput under sustained load is not
 Local check against an open-source Canton release:
 
 ```bash
-java -cp target/scala-2.13/scaleway-kms-driver-0.1.0-SNAPSHOT.jar:canton-open-source-3.6.4/lib/canton-open-source-3.6.4.jar \
+java -cp target/scala-2.13/canton-kms-driver-scaleway-0.1.0-SNAPSHOT.jar:canton-open-source-3.6.4/lib/canton-open-source-3.6.4.jar \
   com.digitalasset.canton.CantonCommunityApp daemon -c canton.conf
 ```
 
