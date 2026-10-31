@@ -1,11 +1,11 @@
-# Scaleway-KMS
+# Scaleway Key Manager KMS driver for Canton
 
 Scaleway Key Management Service (KMS) driver for Canton, implementing the official Canton KMS Driver API v1.
 
 ## Features
 
 -  Full implementation of Canton KMS Driver API v1 (`com.digitalasset.canton.crypto.kms.driver.api.v1`)
--  Discoverable by Canton 3.4.11 via Java ServiceLoader
+-  Discoverable by Canton 3.6 via Java ServiceLoader; passes DA's `kms-driver-testing` suite against real Scaleway
 -  Support for Scaleway Key Manager v1alpha1 API
 -  Asymmetric signing keys (ECDSA P-256, ECDSA P-384)
 -  Asymmetric encryption keys (RSA-2048 OAEP)
@@ -220,4 +220,4 @@ sbt test
 
 ## License
 
-See LICENSE file for details.
+Apache-2.0, see [LICENSE](LICENSE).
