@@ -151,11 +151,15 @@ additionalEnvVars:
 ### Splice / Kubernetes
 
 No custom image is needed. The Splice participant image's `bin/canton` appends
-`EXTRA_CLASSPATH` to Canton's class path, so mount the JAR (about 250 KB, fits in a
-ConfigMap) and point that variable at it:
+`EXTRA_CLASSPATH` to Canton's class path, so mount the JAR and point that variable at it.
+Ship the JAR (about 250 KB) as a **Secret**, not a ConfigMap. The `splice-participant` chart's
+`extraVolumes` only renders `secret` and `persistentVolumeClaim` volumes. A `configMap` entry
+is silently dropped, Kubernetes mounts an empty directory instead, and Canton fails with
+`Driver 'scaleway' ... not found. Found drivers: )`. `helm template` does not show the problem,
+because the volume's name still renders.
 
 ```bash
-kubectl -n <namespace> create configmap canton-kms-driver \
+kubectl -n <namespace> create secret generic canton-kms-driver-jar \
   --from-file=driver.jar=canton-kms-driver-scaleway-<version>.jar
 kubectl -n <namespace> create secret generic scaleway-kms --from-literal=secretKey=<secret-key>
 ```
@@ -184,17 +188,33 @@ additionalEnvVars:
     value: canton.participants.participant.crypto.session-signing-keys.enabled = true
 extraVolumes:
   - name: kms-driver
-    configMap:
-      name: canton-kms-driver
+    secret:
+      secretName: canton-kms-driver-jar
 extraVolumeMounts:
   - name: kms-driver
     mountPath: /opt/canton-kms
 ```
 
-`EXTRA_CLASSPATH` loading was checked with the official Splice 0.9.4 participant image, and
-`helm template` of `splice-participant` 0.9.4 renders these values to the intended HOCON. Not
-yet installed through the chart in a cluster. A KMS participant must be a fresh participant:
-Canton cannot move an existing participant's keys into a KMS.
+A KMS participant must be a fresh participant: Canton cannot move an existing participant's
+keys into a KMS.
+
+**Tested on a DevNet validator (2026-11-03).** v0.2.0 was installed with the `splice-participant`
+and `splice-validator` 0.9.4 charts, using the values above, as a fresh validator on DevNet:
+
+- When the validator app initialised the participant, the participant created its namespace and
+  signing keys (EC P-256) and its encryption key (RSA-2048 OAEP) in Scaleway Key Manager. The
+  validator then onboarded to DevNet and its party and wallet were set up.
+- Pings to itself and to another DevNet validator succeeded. They took 9–17 s, the same range as
+  a validator with software keys measured from the same cluster: on DevNet the network, not the
+  KMS, sets the ping time.
+- After each of three restarts the participant resumed with the same identity and created no new
+  keys.
+- With an invalid secret key, `driver-kms` and `crypto` go to `Failed` with Scaleway's `401
+  authentication is denied`. The participant stops before it initialises, with no retry storm.
+  **The pod can still report ready**, so monitor the `crypto` health state in the logs rather
+  than relying on pod readiness.
+- Size the participant for DevNet catch-up: 2Gi requested / 3Gi limit ran out of Java heap while
+  the node caught up; 4Gi / 6Gi was enough.
 
 ### Latency
 
