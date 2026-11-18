@@ -26,11 +26,13 @@ class ScalewayKmsClient(config: ScalewayKmsConfig, backend: SttpBackend[Identity
    * Health check endpoint
    * Note: Scaleway KMS doesn't have a dedicated health endpoint, so we use 
    * a minimal list operation to verify API connectivity and authentication.
+   * The list is scoped to the configured project: credentials whose IAM policy
+   * covers only that project are refused (403) an unscoped list.
    */
   def healthCheck(): Either[String, Boolean] = {
     logger.debug("Performing health check")
     val request = basicRequest
-      .get(uri"$baseUri/keys?page_size=1")
+      .get(uri"$baseUri/keys?project_id=${config.projectId}&page_size=1")
       .headers(authHeader)
       .readTimeout(config.requestTimeout)
       .response(asStringAlways)
